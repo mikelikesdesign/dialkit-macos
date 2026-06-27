@@ -1,0 +1,6 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+DialKit MacOS.app/
+DialKit macOS.app/

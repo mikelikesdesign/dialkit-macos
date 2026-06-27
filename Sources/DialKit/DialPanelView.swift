@@ -1,0 +1,3129 @@
+import Combine
+import SwiftUI
+import DialKitCore
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
+private enum DialTheme {
+    static let panelBackground = dialColor(from: "#212121") ?? Color(.sRGB, white: 0.13, opacity: 1)
+    static let border = Color.white.opacity(0.10)
+    static let borderSoft = Color.white.opacity(0.06)
+    static let surface = Color.white.opacity(0.05)
+    static let surfaceActive = Color.white.opacity(0.11)
+    static let textRoot = Color.white
+    static let textSection = Color.white.opacity(0.70)
+    static let textLabel = Color.white.opacity(0.70)
+    static let textMuted = Color.white.opacity(0.40)
+    static let shadow = Color.black.opacity(0.45)
+}
+
+private extension DialSpringEditorMode {
+    var label: String {
+        switch self {
+        case .simple:
+            return "Time"
+        case .advanced:
+            return "Physics"
+        }
+    }
+}
+
+private extension DialTransitionMode {
+    var label: String {
+        switch self {
+        case .easing:
+            return "Easing"
+        case .simple:
+            return "Time"
+        case .advanced:
+            return "Physics"
+        }
+    }
+}
+
+package enum DialDrawerPresentation: Equatable {
+    case hidden
+    case medium
+    case tall
+
+    var isExpanded: Bool {
+        self != .hidden
+    }
+}
+
+package enum DialFABStorage {
+    private struct StoredPoint: Codable {
+        let x: Double
+        let y: Double
+    }
+
+    package static func key(for storageID: String) -> String {
+        "DialKit.fab-position.\(storageID)"
+    }
+
+    package static func load(storageID: String, userDefaults: UserDefaults = .standard) -> CGPoint? {
+        guard let data = userDefaults.data(forKey: key(for: storageID)),
+              let point = try? JSONDecoder().decode(StoredPoint.self, from: data) else {
+            return nil
+        }
+
+        return CGPoint(x: point.x, y: point.y)
+    }
+
+    package static func save(_ point: CGPoint?, storageID: String, userDefaults: UserDefaults = .standard) {
+        let storageKey = key(for: storageID)
+        guard let point else {
+            userDefaults.removeObject(forKey: storageKey)
+            return
+        }
+
+        let stored = StoredPoint(x: point.x, y: point.y)
+        guard let data = try? JSONEncoder().encode(stored) else {
+            return
+        }
+
+        userDefaults.set(data, forKey: storageKey)
+    }
+}
+
+package func dialNextDrawerPresentation(from current: DialDrawerPresentation, translationHeight: CGFloat) -> DialDrawerPresentation {
+    guard abs(translationHeight) > 40 else {
+        return current
+    }
+
+    if translationHeight < 0 {
+        switch current {
+        case .hidden:
+            return .medium
+        case .medium:
+            return .tall
+        case .tall:
+            return .tall
+        }
+    }
+
+    switch current {
+    case .tall:
+        return .medium
+    case .medium:
+        return .hidden
+    case .hidden:
+        return .hidden
+    }
+}
+
+package func dialInitialDrawerPresentation(
+    defaultOpen: Bool,
+    externalIsPresented: Bool? = nil
+) -> DialDrawerPresentation {
+    dialResolvedExternalDrawerPresentation(isPresented: externalIsPresented)
+        ?? (defaultOpen ? .medium : .hidden)
+}
+
+package func dialInitialDrawerOverlayVisibility(
+    defaultOpen: Bool,
+    externalIsPresented: Bool? = nil
+) -> Bool {
+    externalIsPresented ?? defaultOpen
+}
+
+package func dialResolvedExternalDrawerPresentation(isPresented: Bool?) -> DialDrawerPresentation? {
+    guard let isPresented else {
+        return nil
+    }
+
+    return isPresented ? .medium : .hidden
+}
+
+package func dialResolvedExternalDrawerBindingValue(
+    presentation: DialDrawerPresentation,
+    isDrivenByHost: Bool
+) -> Bool? {
+    guard isDrivenByHost else {
+        return nil
+    }
+
+    return presentation.isExpanded
+}
+
+package func dialNextStagedDrawerOpenRequestID(after current: UInt) -> UInt {
+    current &+ 1
+}
+
+package func dialShouldExecuteStagedDrawerOpen(
+    requestID: UInt,
+    currentRequestID: UInt,
+    pendingPresentation: DialDrawerPresentation?,
+    externalIsPresented: Bool? = nil,
+    isDrivenByHost: Bool
+) -> Bool {
+    guard requestID == currentRequestID,
+          let pendingPresentation,
+          pendingPresentation.isExpanded else {
+        return false
+    }
+
+    guard !isDrivenByHost else {
+        return dialResolvedExternalDrawerPresentation(isPresented: externalIsPresented)?.isExpanded == true
+    }
+
+    return true
+}
+
+package func dialHasVisibleOrPendingDrawerPresentation(
+    presentation: DialDrawerPresentation,
+    pendingPresentation: DialDrawerPresentation?
+) -> Bool {
+    presentation.isExpanded || pendingPresentation != nil
+}
+
+package func dialShouldTreatDrawerAsAlreadyOpen(
+    presentation: DialDrawerPresentation,
+    pendingPresentation: DialDrawerPresentation?,
+    targetPresentation: DialDrawerPresentation
+) -> Bool {
+    presentation == targetPresentation || pendingPresentation == targetPresentation
+}
+
+package func dialShouldHideDrawerOverlayImmediately(
+    presentation: DialDrawerPresentation,
+    pendingPresentation: DialDrawerPresentation?
+) -> Bool {
+    presentation == .hidden && pendingPresentation != nil
+}
+
+package func dialShouldPersistFABPosition(showsFAB: Bool) -> Bool {
+    showsFAB
+}
+
+package func dialResolvedPanelSelection(current: UUID?, available: [UUID]) -> UUID? {
+    guard !available.isEmpty else {
+        return nil
+    }
+
+    if let current, available.contains(current) {
+        return current
+    }
+
+    return available.first
+}
+
+package let dialDrawerContentInset: CGFloat = 12
+package let dialDrawerHorizontalInset: CGFloat = 8
+package let dialDrawerToolbarBottomPadding: CGFloat = 6
+
+package struct DialSectionDividerVisibility: Equatable {
+    package let showsTopDivider: Bool
+    package let showsBottomDivider: Bool
+}
+
+private let dialDrawerHandleSectionHeight: CGFloat = 27
+private let dialDrawerPanelPickerSectionHeight: CGFloat = 40
+private let dialDrawerToolbarSectionHeight: CGFloat = 42
+
+package func dialDrawerShowsPanelPicker(panelCount: Int) -> Bool {
+    panelCount > 1
+}
+
+package func dialResolvedDrawerWidth(containerWidth: CGFloat) -> CGFloat {
+    max(containerWidth - (dialDrawerHorizontalInset * 2), 0)
+}
+
+package func dialResolvedKeyboardAvoidanceInset(keyboardOverlap: CGFloat) -> CGFloat {
+    max(keyboardOverlap, 0)
+}
+
+package func dialResolvedDrawerAvailableHeight(containerHeight: CGFloat, keyboardOverlap: CGFloat) -> CGFloat {
+    max(containerHeight - dialResolvedKeyboardAvoidanceInset(keyboardOverlap: keyboardOverlap), 0)
+}
+
+package enum DialTextEntryBehavior: Equatable {
+    case standard
+    case drawer
+}
+
+package enum DialTextEntryScrollTarget: Equatable {
+    case bottom
+    case drawerEditing
+}
+
+package enum DialDrawerPresentationChangeSource: Equatable {
+    case user
+    case textEntryAuto
+}
+
+private let dialDrawerTopMargin: CGFloat = 12
+private let dialDrawerEditingRevealInset: CGFloat = 160
+
+package struct DialDrawerMaximumHeights: Equatable {
+    package let medium: CGFloat
+    package let tall: CGFloat
+}
+
+package func dialDrawerHasActiveKeyboardTextEntry(
+    behavior: DialTextEntryBehavior,
+    focusedTextEntryID: String?,
+    keyboardOverlap: CGFloat
+) -> Bool {
+    behavior == .drawer
+        && focusedTextEntryID != nil
+        && dialResolvedKeyboardAvoidanceInset(keyboardOverlap: keyboardOverlap) > 0.5
+}
+
+package func dialDrawerUsesExpandedKeyboardLayout(
+    behavior: DialTextEntryBehavior,
+    keyboardOverlap: CGFloat
+) -> Bool {
+    behavior == .drawer
+        && dialResolvedKeyboardAvoidanceInset(keyboardOverlap: keyboardOverlap) > 0.5
+}
+
+package func dialResolvedDrawerTallMaximumHeight(
+    availableHeight: CGFloat,
+    keyboardOverlap: CGFloat,
+    textEntryBehavior: DialTextEntryBehavior = .standard,
+    focusedTextEntryID: String? = nil
+) -> CGFloat {
+    let availableHeight = max(availableHeight, 0)
+    let defaultHeight = min(availableHeight * 0.90, max(availableHeight - dialDrawerTopMargin, 0))
+
+    guard dialDrawerUsesExpandedKeyboardLayout(
+        behavior: textEntryBehavior,
+        keyboardOverlap: keyboardOverlap
+    ) else {
+        return defaultHeight
+    }
+
+    return max(availableHeight - dialDrawerTopMargin, 0)
+}
+
+package func dialResolvedDrawerMaximumHeights(
+    containerHeight: CGFloat,
+    keyboardOverlap: CGFloat,
+    textEntryBehavior: DialTextEntryBehavior = .standard,
+    focusedTextEntryID: String? = nil
+) -> DialDrawerMaximumHeights {
+    let availableHeight = dialResolvedDrawerAvailableHeight(
+        containerHeight: containerHeight,
+        keyboardOverlap: keyboardOverlap
+    )
+
+    return DialDrawerMaximumHeights(
+        medium: min(availableHeight * 0.58, 560),
+        tall: dialResolvedDrawerTallMaximumHeight(
+            availableHeight: availableHeight,
+            keyboardOverlap: keyboardOverlap,
+            textEntryBehavior: textEntryBehavior,
+            focusedTextEntryID: focusedTextEntryID
+        )
+    )
+}
+
+package func dialDrawerChromeHeight(panelCount: Int) -> CGFloat {
+    dialDrawerHandleSectionHeight
+        + dialDrawerToolbarSectionHeight
+        + (dialDrawerShowsPanelPicker(panelCount: panelCount) ? dialDrawerPanelPickerSectionHeight : 0)
+}
+
+package func dialDrawerHeightCap(
+    presentation: DialDrawerPresentation,
+    mediumMaxHeight: CGFloat,
+    tallMaxHeight: CGFloat
+) -> CGFloat {
+    switch presentation {
+    case .hidden:
+        return 0
+    case .medium:
+        return mediumMaxHeight
+    case .tall:
+        return tallMaxHeight
+    }
+}
+
+package func dialResolvedDrawerHeight(
+    presentation: DialDrawerPresentation,
+    intrinsicContentHeight: CGFloat,
+    mediumMaxHeight: CGFloat,
+    tallMaxHeight: CGFloat,
+    textEntryBehavior: DialTextEntryBehavior = .standard,
+    focusedTextEntryID: String? = nil,
+    keyboardOverlap: CGFloat = 0
+) -> CGFloat {
+    guard presentation != .hidden else {
+        return 0
+    }
+
+    if presentation == .tall,
+       dialDrawerUsesExpandedKeyboardLayout(
+        behavior: textEntryBehavior,
+        keyboardOverlap: keyboardOverlap
+       ) {
+        return dialDrawerHeightCap(
+            presentation: presentation,
+            mediumMaxHeight: mediumMaxHeight,
+            tallMaxHeight: tallMaxHeight
+        )
+    }
+
+    return min(max(intrinsicContentHeight, 0), dialDrawerHeightCap(
+        presentation: presentation,
+        mediumMaxHeight: mediumMaxHeight,
+        tallMaxHeight: tallMaxHeight
+    ))
+}
+
+package func dialDrawerControlsHeightCap(
+    presentation: DialDrawerPresentation,
+    panelCount: Int,
+    mediumMaxHeight: CGFloat,
+    tallMaxHeight: CGFloat
+) -> CGFloat {
+    max(
+        dialDrawerHeightCap(
+            presentation: presentation,
+            mediumMaxHeight: mediumMaxHeight,
+            tallMaxHeight: tallMaxHeight
+        ) - dialDrawerChromeHeight(panelCount: panelCount),
+        0
+    )
+}
+
+package func dialDrawerControlsShouldScroll(
+    intrinsicContentHeight: CGFloat,
+    maxHeight: CGFloat?,
+    focusedTextEntryID: String? = nil,
+    keyboardOverlap: CGFloat = 0
+) -> Bool {
+    if focusedTextEntryID != nil || dialResolvedKeyboardAvoidanceInset(keyboardOverlap: keyboardOverlap) > 0.5 {
+        return true
+    }
+
+    guard let maxHeight else {
+        return false
+    }
+
+    return max(intrinsicContentHeight, 0) > max(maxHeight, 0) + 0.5
+}
+
+package func dialResolvedDrawerControlsViewportHeight(
+    intrinsicContentHeight: CGFloat,
+    maxHeight: CGFloat?,
+    textEntryBehavior: DialTextEntryBehavior = .standard,
+    focusedTextEntryID: String? = nil,
+    keyboardOverlap: CGFloat = 0
+) -> CGFloat {
+    let intrinsicContentHeight = max(intrinsicContentHeight, 0)
+    guard let maxHeight else {
+        return intrinsicContentHeight
+    }
+
+    if dialDrawerUsesExpandedKeyboardLayout(
+        behavior: textEntryBehavior,
+        keyboardOverlap: keyboardOverlap
+    ) {
+        return max(maxHeight, 0)
+    }
+
+    return min(intrinsicContentHeight, max(maxHeight, 0))
+}
+
+package func dialResolvedControlsBottomInset(
+    baseInset: CGFloat,
+    keyboardOverlap: CGFloat,
+    textEntryBehavior: DialTextEntryBehavior = .standard,
+    focusedTextEntryID: String? = nil
+) -> CGFloat {
+    let baseInset = max(baseInset, 0)
+
+    guard dialDrawerUsesExpandedKeyboardLayout(
+        behavior: textEntryBehavior,
+        keyboardOverlap: keyboardOverlap
+    ) else {
+        return max(baseInset + dialResolvedKeyboardAvoidanceInset(keyboardOverlap: keyboardOverlap), 0)
+    }
+
+    return baseInset + dialDrawerEditingRevealInset
+}
+
+package func dialResolvedTextEntryScrollTarget(
+    textEntryBehavior: DialTextEntryBehavior = .standard,
+    focusedTextEntryID: String? = nil,
+    keyboardOverlap: CGFloat = 0
+) -> DialTextEntryScrollTarget {
+    guard dialDrawerHasActiveKeyboardTextEntry(
+        behavior: textEntryBehavior,
+        focusedTextEntryID: focusedTextEntryID,
+        keyboardOverlap: keyboardOverlap
+    ) else {
+        return .bottom
+    }
+
+    return .drawerEditing
+}
+
+package func dialResolvedDrawerPresentationForTextEntry(
+    presentation: DialDrawerPresentation,
+    textEntryBehavior: DialTextEntryBehavior = .standard,
+    focusedTextEntryID: String? = nil,
+    keyboardOverlap: CGFloat = 0
+) -> DialDrawerPresentation {
+    guard presentation != .hidden else {
+        return presentation
+    }
+
+    guard dialDrawerUsesExpandedKeyboardLayout(
+        behavior: textEntryBehavior,
+        keyboardOverlap: keyboardOverlap
+    ) else {
+        return presentation
+    }
+
+    return .tall
+}
+
+package func dialShouldPromoteDrawerForFocusedTextEntry(
+    presentation: DialDrawerPresentation,
+    focusedTextEntryID: String?
+) -> Bool {
+    presentation == .medium && focusedTextEntryID != nil
+}
+
+package func dialResolvedDrawerRestorePresentationBeforeTextEntry(
+    currentPresentation: DialDrawerPresentation,
+    storedPresentation: DialDrawerPresentation?,
+    targetPresentation: DialDrawerPresentation,
+    source: DialDrawerPresentationChangeSource
+) -> DialDrawerPresentation? {
+    switch source {
+    case .user:
+        return nil
+    case .textEntryAuto:
+        guard currentPresentation == .medium, targetPresentation == .tall else {
+            return storedPresentation
+        }
+
+        return storedPresentation ?? currentPresentation
+    }
+}
+
+package func dialResolvedDrawerRestorePresentationAfterTextEntryEnds(
+    storedPresentation: DialDrawerPresentation?
+) -> DialDrawerPresentation? {
+    storedPresentation
+}
+
+package func dialTextEntryFocusID(for path: String) -> String {
+    path
+}
+
+package func dialBezierTextEntryFocusID(for path: String) -> String {
+    "\(path).bezier"
+}
+
+package func dialSnappedSliderValue(_ raw: Double, range: ClosedRange<Double>, step: Double) -> Double {
+    dialRound(raw, step: step, within: range)
+}
+
+package func dialSliderValueByApplyingTranslation(
+    _ translation: CGFloat,
+    width: CGFloat,
+    initialValue: Double,
+    range: ClosedRange<Double>,
+    step: Double
+) -> Double {
+    let safeWidth = max(width, 1)
+    let fractionDelta = Double(translation / safeWidth)
+    let raw = initialValue + fractionDelta * (range.upperBound - range.lowerBound)
+    return dialSnappedSliderValue(raw, range: range, step: step)
+}
+
+package func dialShouldEmitSliderHaptic(previousValue: Double?, nextValue: Double) -> Bool {
+    guard let previousValue else {
+        return false
+    }
+
+    return previousValue != nextValue
+}
+
+package enum DialSliderGestureDisposition: Equatable {
+    case undecided
+    case slider
+    case scroll
+}
+
+package func dialResolveSliderGestureDisposition(
+    translation: CGSize,
+    activationDistance: CGFloat = 10,
+    horizontalBias: CGFloat = 1.25
+) -> DialSliderGestureDisposition {
+    let horizontalDistance = abs(translation.width)
+    let verticalDistance = abs(translation.height)
+    let totalDistance = hypot(horizontalDistance, verticalDistance)
+
+    guard totalDistance >= activationDistance else {
+        return .undecided
+    }
+
+    if horizontalDistance > verticalDistance * horizontalBias {
+        return .slider
+    }
+
+    return .scroll
+}
+
+package func dialActivePresetName(activePresetID: UUID?, presets: [DialPresetSummary]) -> String {
+    presets.first(where: { $0.id == activePresetID })?.name ?? "Version 1"
+}
+
+package enum DialPresetSelectionAction: Equatable {
+    case clear
+    case load(UUID)
+}
+
+package func dialPresetSelectionAction(for selection: UUID?) -> DialPresetSelectionAction {
+    if let selection {
+        return .load(selection)
+    }
+
+    return .clear
+}
+
+package func dialControlUsesSectionDivider(_ control: DialResolvedControl) -> Bool {
+    switch control.kind {
+    case .spring, .transition, .group:
+        return true
+    default:
+        return false
+    }
+}
+
+package func dialSectionDividerVisibility(at index: Int, in controls: [DialResolvedControl]) -> DialSectionDividerVisibility {
+    guard controls.indices.contains(index), dialControlUsesSectionDivider(controls[index]) else {
+        return DialSectionDividerVisibility(showsTopDivider: false, showsBottomDivider: false)
+    }
+
+    return DialSectionDividerVisibility(
+        showsTopDivider: controls[..<index].contains(where: dialControlUsesSectionDivider),
+        showsBottomDivider: false
+    )
+}
+
+package func dialAccordionIDs(in controls: [DialResolvedControl]) -> Set<String> {
+    controls.reduce(into: Set<String>()) { ids, control in
+        ids.formUnion(dialAccordionIDs(in: control))
+    }
+}
+
+private func dialAccordionIDs(in control: DialResolvedControl) -> Set<String> {
+    switch control.kind {
+    case let .group(group):
+        return Set([control.id]).union(dialAccordionIDs(in: group.children))
+    case .spring, .transition:
+        return Set([control.id])
+    default:
+        return []
+    }
+}
+
+#if canImport(UIKit)
+@MainActor
+private final class DialKeyboardObserver: ObservableObject {
+    @Published private(set) var overlap: CGFloat = 0
+
+    private var cancellables: Set<AnyCancellable> = []
+
+    init(notificationCenter: NotificationCenter = .default) {
+        notificationCenter.publisher(for: UIResponder.keyboardWillChangeFrameNotification)
+            .merge(with: notificationCenter.publisher(for: UIResponder.keyboardWillHideNotification))
+            .receive(on: RunLoop.main)
+            .sink { [weak self] notification in
+                self?.handleKeyboardNotification(notification)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handleKeyboardNotification(_ notification: Notification) {
+        let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+        let nextOverlap: CGFloat
+
+        if notification.name == UIResponder.keyboardWillHideNotification {
+            nextOverlap = 0
+        } else {
+            let endFrame = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect) ?? .null
+            let screenHeight = UIScreen.main.bounds.height
+            nextOverlap = endFrame.isNull ? 0 : max(screenHeight - endFrame.minY, 0)
+        }
+
+        guard abs(overlap - nextOverlap) > 0.5 else {
+            overlap = nextOverlap
+            return
+        }
+
+        withAnimation(.easeOut(duration: duration)) {
+            overlap = nextOverlap
+        }
+    }
+}
+#else
+@MainActor
+private final class DialKeyboardObserver: ObservableObject {
+    @Published private(set) var overlap: CGFloat = 0
+}
+#endif
+
+#if canImport(UIKit)
+package func dialClampedFABCenter(
+    _ point: CGPoint,
+    in size: CGSize,
+    safeAreaInsets: UIEdgeInsets,
+    diameter: CGFloat,
+    horizontalMargin: CGFloat,
+    topMargin: CGFloat,
+    bottomMargin: CGFloat
+) -> CGPoint {
+    let radius = diameter / 2
+    let minX = radius + horizontalMargin + safeAreaInsets.left
+    let maxX = max(minX, size.width - radius - horizontalMargin - safeAreaInsets.right)
+    let minY = radius + topMargin + safeAreaInsets.top
+    let maxY = max(minY, size.height - radius - bottomMargin - safeAreaInsets.bottom)
+
+    return CGPoint(
+        x: min(max(point.x, minX), maxX),
+        y: min(max(point.y, minY), maxY)
+    )
+}
+
+package func dialDefaultFABCenter(
+    for position: DialPosition,
+    in size: CGSize,
+    safeAreaInsets: UIEdgeInsets,
+    diameter: CGFloat,
+    horizontalMargin: CGFloat,
+    topMargin: CGFloat,
+    bottomMargin: CGFloat
+) -> CGPoint {
+    let radius = diameter / 2
+    let minX = radius + horizontalMargin + safeAreaInsets.left
+    let maxX = max(minX, size.width - radius - horizontalMargin - safeAreaInsets.right)
+    let minY = radius + topMargin + safeAreaInsets.top
+    let maxY = max(minY, size.height - radius - bottomMargin - safeAreaInsets.bottom)
+
+    switch position {
+    case .topRight:
+        return CGPoint(x: maxX, y: minY)
+    case .topLeft:
+        return CGPoint(x: minX, y: minY)
+    case .bottomRight:
+        return CGPoint(x: maxX, y: maxY)
+    case .bottomLeft:
+        return CGPoint(x: minX, y: maxY)
+    }
+}
+#endif
+
+struct DialDrawerHost: View {
+    @ObservedObject private var store: DialStore
+    let position: DialPosition
+    let defaultOpen: Bool
+    let storageID: String
+    let showsFAB: Bool
+    private let isPresented: Binding<Bool>?
+
+    @State private var drawerPresentation: DialDrawerPresentation
+    @State private var drawerVisualPresentation: DialDrawerPresentation
+    @State private var showsDrawerOverlay: Bool
+    @State private var selectedPanelID: UUID?
+    @State private var fabPosition: CGPoint?
+    @State private var drawerPresentationBeforeTextEntry: DialDrawerPresentation?
+    @State private var pendingDrawerPresentation: DialDrawerPresentation?
+    @State private var stagedDrawerOpenRequestID: UInt
+
+    init(
+        store: DialStore,
+        position: DialPosition,
+        defaultOpen: Bool,
+        storageID: String,
+        showsFAB: Bool,
+        isPresented: Binding<Bool>? = nil
+    ) {
+        let initialPresentation = dialInitialDrawerPresentation(
+            defaultOpen: defaultOpen,
+            externalIsPresented: isPresented?.wrappedValue
+        )
+
+        self._store = ObservedObject(wrappedValue: store)
+        self.position = position
+        self.defaultOpen = defaultOpen
+        self.storageID = storageID
+        self.showsFAB = showsFAB
+        self.isPresented = isPresented
+        self._drawerPresentation = State(initialValue: initialPresentation)
+        self._drawerVisualPresentation = State(initialValue: initialPresentation == .hidden ? .medium : initialPresentation)
+        self._showsDrawerOverlay = State(initialValue: dialInitialDrawerOverlayVisibility(
+            defaultOpen: defaultOpen,
+            externalIsPresented: isPresented?.wrappedValue
+        ))
+        self._selectedPanelID = State(initialValue: nil)
+        self._fabPosition = State(initialValue: dialShouldPersistFABPosition(showsFAB: showsFAB)
+            ? DialFABStorage.load(storageID: storageID)
+            : nil)
+        self._drawerPresentationBeforeTextEntry = State(initialValue: nil)
+        self._pendingDrawerPresentation = State(initialValue: nil)
+        self._stagedDrawerOpenRequestID = State(initialValue: 0)
+    }
+
+    private var activePanel: AnyDialPanelBox? {
+        let resolvedID = dialResolvedPanelSelection(current: selectedPanelID, available: store.panels.map(\.id))
+        return store.panels.first(where: { $0.id == resolvedID }) ?? store.panels.first
+    }
+
+    private var externalPresentationValue: Bool? {
+        isPresented?.wrappedValue
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                if showsDrawerOverlay, let activePanel {
+                    ZStack(alignment: .bottom) {
+                        if drawerPresentation.isExpanded {
+                            Color.black.opacity(0.001)
+                                .ignoresSafeArea()
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    hideDrawer()
+                                }
+                        }
+
+                        DialDrawerPanel(
+                            panel: activePanel,
+                            panels: store.panels,
+                            selectedPanelID: $selectedPanelID,
+                            presentation: activeDrawerPresentation,
+                            containerSize: proxy.size,
+                            onDrag: handleDrawerDrag,
+                            onFocusedTextEntryChanged: { focusedTextEntryID in
+                                if dialShouldPromoteDrawerForFocusedTextEntry(
+                                    presentation: drawerPresentation,
+                                    focusedTextEntryID: focusedTextEntryID
+                                ) {
+                                    presentDrawer(.tall, source: .textEntryAuto)
+                                    return
+                                }
+
+                                guard focusedTextEntryID == nil else {
+                                    return
+                                }
+
+                                restoreDrawerPresentationAfterTextEntryIfNeeded()
+                            },
+                            onDrawerTextEntryActivityChanged: { isActive in
+                                guard !isActive else {
+                                    return
+                                }
+
+                                restoreDrawerPresentationAfterTextEntryIfNeeded()
+                            }
+                        )
+                        .padding(.horizontal, dialDrawerHorizontalInset)
+                        .offset(y: drawerPresentation == .hidden ? proxy.size.height + 24 : 0)
+                        .allowsHitTesting(drawerPresentation.isExpanded)
+                    }
+                }
+
+                if showsFAB && !showsDrawerOverlay {
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                            .allowsHitTesting(false)
+
+                        fabOverlay(in: proxy)
+                    }
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .onAppear {
+            selectedPanelID = dialResolvedPanelSelection(current: selectedPanelID, available: store.panels.map(\.id))
+        }
+        .onChange(of: store.panels.map(\.id)) { _, ids in
+            selectedPanelID = dialResolvedPanelSelection(current: selectedPanelID, available: ids)
+        }
+        .onChange(of: fabPosition) { _, newValue in
+            guard dialShouldPersistFABPosition(showsFAB: showsFAB) else {
+                return
+            }
+
+            DialFABStorage.save(newValue, storageID: storageID)
+        }
+        .onChange(of: externalPresentationValue) { _, newValue in
+            handleExternalPresentationChange(newValue)
+        }
+    }
+
+    private var activeDrawerPresentation: DialDrawerPresentation {
+        drawerPresentation == .hidden ? drawerVisualPresentation : drawerPresentation
+    }
+
+    private func handleDrawerDrag(_ translationHeight: CGFloat) {
+        let target = dialNextDrawerPresentation(from: drawerPresentation, translationHeight: translationHeight)
+        guard target != drawerPresentation else {
+            return
+        }
+
+        if target == .hidden {
+            hideDrawer()
+        } else {
+            presentDrawer(target, source: .user)
+        }
+    }
+
+    private func presentDrawer(
+        _ target: DialDrawerPresentation,
+        source: DialDrawerPresentationChangeSource = .user
+    ) {
+        drawerPresentationBeforeTextEntry = dialResolvedDrawerRestorePresentationBeforeTextEntry(
+            currentPresentation: drawerPresentation,
+            storedPresentation: drawerPresentationBeforeTextEntry,
+            targetPresentation: target,
+            source: source
+        )
+
+        if !showsDrawerOverlay {
+            drawerVisualPresentation = target
+            drawerPresentation = .hidden
+            let requestID = dialNextStagedDrawerOpenRequestID(after: stagedDrawerOpenRequestID)
+            stagedDrawerOpenRequestID = requestID
+            pendingDrawerPresentation = target
+            withAnimation(fabAppearanceAnimation) {
+                showsDrawerOverlay = true
+            }
+
+            DispatchQueue.main.async {
+                guard dialShouldExecuteStagedDrawerOpen(
+                    requestID: requestID,
+                    currentRequestID: stagedDrawerOpenRequestID,
+                    pendingPresentation: pendingDrawerPresentation,
+                    externalIsPresented: externalPresentationValue,
+                    isDrivenByHost: isPresented != nil
+                ) else {
+                    return
+                }
+
+                pendingDrawerPresentation = nil
+                withAnimation(drawerAnimation) {
+                    drawerVisualPresentation = target
+                    drawerPresentation = target
+                }
+            }
+
+            syncExternalPresentationBinding(with: target)
+            return
+        }
+
+        cancelStagedDrawerOpen()
+        withAnimation(drawerAnimation) {
+            drawerVisualPresentation = target
+            drawerPresentation = target
+        }
+
+        syncExternalPresentationBinding(with: target)
+    }
+
+    private func hideDrawer() {
+        let shouldHideOverlayImmediately = dialShouldHideDrawerOverlayImmediately(
+            presentation: drawerPresentation,
+            pendingPresentation: pendingDrawerPresentation
+        )
+
+        cancelStagedDrawerOpen()
+        drawerPresentationBeforeTextEntry = nil
+        drawerVisualPresentation = activeDrawerPresentation
+
+        if shouldHideOverlayImmediately {
+            syncExternalPresentationBinding(with: .hidden)
+
+            withAnimation(fabAppearanceAnimation) {
+                showsDrawerOverlay = false
+            }
+            return
+        }
+
+        withAnimation(drawerAnimation) {
+            drawerPresentation = .hidden
+        }
+
+        syncExternalPresentationBinding(with: .hidden)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+            if drawerPresentation == .hidden {
+                withAnimation(fabAppearanceAnimation) {
+                    showsDrawerOverlay = false
+                }
+            }
+        }
+    }
+
+    private var drawerAnimation: Animation {
+        .spring(response: 0.32, dampingFraction: 0.86)
+    }
+
+    private var fabAppearanceAnimation: Animation {
+        .spring(response: 0.22, dampingFraction: 0.9)
+    }
+
+    private func cancelStagedDrawerOpen() {
+        pendingDrawerPresentation = nil
+        stagedDrawerOpenRequestID = dialNextStagedDrawerOpenRequestID(after: stagedDrawerOpenRequestID)
+    }
+
+    private func handleExternalPresentationChange(_ newValue: Bool?) {
+        guard let target = dialResolvedExternalDrawerPresentation(isPresented: newValue) else {
+            return
+        }
+
+        if target.isExpanded {
+            guard !dialShouldTreatDrawerAsAlreadyOpen(
+                presentation: drawerPresentation,
+                pendingPresentation: pendingDrawerPresentation,
+                targetPresentation: target
+            ) else {
+                return
+            }
+
+            presentDrawer(target)
+            return
+        }
+
+        guard dialHasVisibleOrPendingDrawerPresentation(
+            presentation: drawerPresentation,
+            pendingPresentation: pendingDrawerPresentation
+        ) else {
+            return
+        }
+
+        hideDrawer()
+    }
+
+    private func syncExternalPresentationBinding(with presentation: DialDrawerPresentation) {
+        guard let resolvedValue = dialResolvedExternalDrawerBindingValue(
+            presentation: presentation,
+            isDrivenByHost: isPresented != nil
+        ),
+        let isPresented,
+        isPresented.wrappedValue != resolvedValue else {
+            return
+        }
+
+        isPresented.wrappedValue = resolvedValue
+    }
+
+    @ViewBuilder
+    private func fabOverlay(in proxy: GeometryProxy) -> some View {
+        #if canImport(UIKit)
+        DraggableFABOverlay(
+            containerSize: proxy.size,
+            safeAreaInsets: proxy.safeAreaInsets.uiEdgeInsets,
+            initialPosition: position,
+            position: $fabPosition,
+            action: { presentDrawer(.medium) }
+        )
+        #else
+        Button {
+            presentDrawer(.medium)
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(DialTheme.textRoot)
+                .frame(width: 56, height: 56)
+                .background(Circle().fill(DialTheme.panelBackground))
+                .overlay {
+                    Circle().stroke(DialTheme.border, lineWidth: 1)
+                }
+                .shadow(color: DialTheme.shadow, radius: 18, y: 6)
+        }
+        .buttonStyle(.plain)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: dialFallbackFABAlignment(for: position)
+        )
+        .padding(8)
+        #endif
+    }
+
+    private func restoreDrawerPresentationAfterTextEntryIfNeeded() {
+        guard let restoredPresentation = dialResolvedDrawerRestorePresentationAfterTextEntryEnds(
+            storedPresentation: drawerPresentationBeforeTextEntry
+        ) else {
+            return
+        }
+
+        drawerPresentationBeforeTextEntry = nil
+
+        withAnimation(drawerAnimation) {
+            drawerVisualPresentation = restoredPresentation
+            drawerPresentation = restoredPresentation
+        }
+    }
+}
+
+private struct DialDrawerPanel: View {
+    @ObservedObject var panel: AnyDialPanelBox
+    let panels: [AnyDialPanelBox]
+    @Binding var selectedPanelID: UUID?
+    let presentation: DialDrawerPresentation
+    let containerSize: CGSize
+    let onDrag: (CGFloat) -> Void
+    let onFocusedTextEntryChanged: (String?) -> Void
+    let onDrawerTextEntryActivityChanged: (Bool) -> Void
+
+    @State private var measuredControlsContentHeight: CGFloat = 0
+    @State private var focusedTextEntryID: String?
+    @StateObject private var keyboardObserver = DialKeyboardObserver()
+
+    var body: some View {
+        let width = dialResolvedDrawerWidth(containerWidth: containerSize.width)
+        let keyboardOverlap = keyboardObserver.overlap
+        let hasActiveKeyboardTextEntry = dialDrawerHasActiveKeyboardTextEntry(
+            behavior: .drawer,
+            focusedTextEntryID: focusedTextEntryID,
+            keyboardOverlap: keyboardOverlap
+        )
+        let effectivePresentation = dialResolvedDrawerPresentationForTextEntry(
+            presentation: presentation,
+            textEntryBehavior: .drawer,
+            focusedTextEntryID: focusedTextEntryID,
+            keyboardOverlap: keyboardOverlap
+        )
+        let maximumHeights = dialResolvedDrawerMaximumHeights(
+            containerHeight: containerSize.height,
+            keyboardOverlap: keyboardOverlap,
+            textEntryBehavior: .drawer,
+            focusedTextEntryID: focusedTextEntryID
+        )
+        let controlsHeightCap = dialDrawerControlsHeightCap(
+            presentation: effectivePresentation,
+            panelCount: panels.count,
+            mediumMaxHeight: maximumHeights.medium,
+            tallMaxHeight: maximumHeights.tall
+        )
+        let intrinsicHeight = dialDrawerChromeHeight(panelCount: panels.count) + measuredControlsContentHeight
+        let resolvedHeight = dialResolvedDrawerHeight(
+            presentation: effectivePresentation,
+            intrinsicContentHeight: intrinsicHeight,
+            mediumMaxHeight: maximumHeights.medium,
+            tallMaxHeight: maximumHeights.tall,
+            textEntryBehavior: .drawer,
+            focusedTextEntryID: focusedTextEntryID,
+            keyboardOverlap: keyboardOverlap
+        )
+
+        VStack(alignment: .leading, spacing: 0) {
+            Capsule()
+                .fill(Color.white.opacity(0.22))
+                .frame(width: 42, height: 5)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
+
+            if dialDrawerShowsPanelPicker(panelCount: panels.count) {
+                panelPicker
+                    .padding(.horizontal, dialDrawerContentInset)
+                    .padding(.bottom, 8)
+            }
+
+            DialPanelControlsView(
+                panel: panel,
+                toolbarBottomPadding: dialDrawerToolbarBottomPadding,
+                contentBottomPadding: dialDrawerContentInset,
+                maxControlsHeight: controlsHeightCap,
+                keyboardOverlap: keyboardOverlap,
+                textEntryBehavior: .drawer,
+                onFocusedTextEntryChanged: { newValue in
+                    focusedTextEntryID = newValue
+                    onFocusedTextEntryChanged(newValue)
+                },
+                onMeasuredControlsHeight: { newHeight in
+                    guard abs(measuredControlsContentHeight - newHeight) > 0.5 else {
+                        return
+                    }
+
+                    measuredControlsContentHeight = newHeight
+                }
+            )
+        }
+        .frame(width: width)
+        .frame(height: measuredControlsContentHeight > 0 ? resolvedHeight : nil, alignment: .top)
+        .background {
+            DialPanelBackground(cornerRadius: 24)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(DialTheme.border, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: DialTheme.shadow, radius: 32, y: 8)
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .offset(y: -dialResolvedKeyboardAvoidanceInset(keyboardOverlap: keyboardOverlap))
+        .gesture(
+            DragGesture(minimumDistance: 16)
+                .onEnded { gesture in
+                    onDrag(gesture.translation.height)
+                }
+        )
+        .onAppear {
+            onDrawerTextEntryActivityChanged(hasActiveKeyboardTextEntry)
+        }
+        .onChange(of: hasActiveKeyboardTextEntry) { _, newValue in
+            onDrawerTextEntryActivityChanged(newValue)
+        }
+    }
+
+    private var panelPicker: some View {
+        Menu {
+            ForEach(panels) { candidate in
+                Button(candidate.name) {
+                    selectedPanelID = candidate.id
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(panel.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(DialTheme.textRoot)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DialTheme.textLabel.opacity(0.8))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 32)
+            .padding(.horizontal, 10)
+            .background(DialRowBackground(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct DialPanelControlsView: View {
+    @ObservedObject var panel: AnyDialPanelBox
+    let toolbarBottomPadding: CGFloat
+    let contentBottomPadding: CGFloat
+    let maxControlsHeight: CGFloat?
+    let keyboardOverlap: CGFloat
+    let textEntryBehavior: DialTextEntryBehavior
+    let onFocusedTextEntryChanged: ((String?) -> Void)?
+    let onMeasuredControlsHeight: ((CGFloat) -> Void)?
+
+    @State private var copiedState = false
+    @State private var measuredControlsContentHeight: CGFloat = 0
+    @State private var focusedTextEntryID: String?
+
+    init(
+        panel: AnyDialPanelBox,
+        toolbarBottomPadding: CGFloat = 8,
+        contentBottomPadding: CGFloat = 12,
+        maxControlsHeight: CGFloat? = nil,
+        keyboardOverlap: CGFloat = 0,
+        textEntryBehavior: DialTextEntryBehavior = .standard,
+        onFocusedTextEntryChanged: ((String?) -> Void)? = nil,
+        onMeasuredControlsHeight: ((CGFloat) -> Void)? = nil
+    ) {
+        self.panel = panel
+        self.toolbarBottomPadding = toolbarBottomPadding
+        self.contentBottomPadding = contentBottomPadding
+        self.maxControlsHeight = maxControlsHeight
+        self.keyboardOverlap = keyboardOverlap
+        self.textEntryBehavior = textEntryBehavior
+        self.onFocusedTextEntryChanged = onFocusedTextEntryChanged
+        self.onMeasuredControlsHeight = onMeasuredControlsHeight
+    }
+
+    private var activePresetName: String {
+        dialActivePresetName(activePresetID: panel.activePresetID, presets: panel.presets)
+    }
+
+    private var presetSelection: Binding<UUID?> {
+        Binding(
+            get: { panel.activePresetID },
+            set: {
+                switch dialPresetSelectionAction(for: $0) {
+                case .clear:
+                    panel.clearActivePreset()
+                case let .load(id):
+                    panel.loadPreset(id: id)
+                }
+            }
+        )
+    }
+
+    private var controlsShouldScroll: Bool {
+        guard measuredControlsContentHeight > 0 else {
+            return maxControlsHeight != nil || focusedTextEntryID != nil || keyboardOverlap > 0.5
+        }
+
+        return dialDrawerControlsShouldScroll(
+            intrinsicContentHeight: measuredControlsContentHeight,
+            maxHeight: maxControlsHeight,
+            focusedTextEntryID: focusedTextEntryID,
+            keyboardOverlap: keyboardOverlap
+        )
+    }
+
+    private var visibleControlsHeight: CGFloat? {
+        guard measuredControlsContentHeight > 0 else {
+            return maxControlsHeight
+        }
+
+        return dialResolvedDrawerControlsViewportHeight(
+            intrinsicContentHeight: measuredControlsContentHeight,
+            maxHeight: maxControlsHeight,
+            textEntryBehavior: textEntryBehavior,
+            focusedTextEntryID: focusedTextEntryID,
+            keyboardOverlap: keyboardOverlap
+        )
+    }
+
+    var body: some View {
+        let accordionIDs = dialAccordionIDs(in: panel.controls)
+
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                toolbar
+                    .padding(.horizontal, dialDrawerContentInset)
+                    .padding(.bottom, toolbarBottomPadding)
+
+                controlsViewport
+                    .background {
+                        controlsMeasurementView
+                    }
+            }
+            .onPreferenceChange(DialMeasuredHeightKey.self) { newHeight in
+                guard abs(measuredControlsContentHeight - newHeight) > 0.5 else {
+                    return
+                }
+
+                measuredControlsContentHeight = newHeight
+                onMeasuredControlsHeight?(newHeight)
+            }
+            .onAppear {
+                panel.pruneAccordionExpanded(validIDs: accordionIDs)
+            }
+            .onChange(of: accordionIDs) { _, newValue in
+                panel.pruneAccordionExpanded(validIDs: newValue)
+            }
+            .onChange(of: focusedTextEntryID) { _, newValue in
+                onFocusedTextEntryChanged?(newValue)
+
+                guard let newValue else {
+                    return
+                }
+
+                scrollToFocusedTextEntry(newValue, using: proxy)
+            }
+            .onChange(of: keyboardOverlap) { _, newValue in
+                guard let focusedTextEntryID, newValue > 0.5 else {
+                    return
+                }
+
+                scrollToFocusedTextEntry(focusedTextEntryID, using: proxy)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var controlsViewport: some View {
+        if controlsShouldScroll {
+            ScrollView(showsIndicators: false) {
+                controlsContent(
+                    bottomInset: dialResolvedControlsBottomInset(
+                        baseInset: contentBottomPadding,
+                        keyboardOverlap: keyboardOverlap,
+                        textEntryBehavior: textEntryBehavior,
+                        focusedTextEntryID: focusedTextEntryID
+                    ),
+                    measurement: false
+                )
+            }
+            .frame(height: visibleControlsHeight, alignment: .top)
+            .dialKeyboardDismissBehavior()
+        } else {
+            controlsContent(bottomInset: contentBottomPadding, measurement: false)
+        }
+    }
+
+    private func controlsContent(bottomInset: CGFloat, measurement: Bool) -> some View {
+        VStack(spacing: 6) {
+            controlList(panel.controls, measurement: measurement)
+        }
+        .padding(.horizontal, dialDrawerContentInset)
+        .padding(.bottom, bottomInset)
+    }
+
+    private var controlsMeasurementView: some View {
+        controlsContent(bottomInset: contentBottomPadding, measurement: true)
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(key: DialMeasuredHeightKey.self, value: proxy.size.height)
+                }
+            }
+            .hidden()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 6) {
+            Button {
+                panel.savePreset(named: panel.nextPresetName)
+            } label: {
+                Image(systemName: "slider.horizontal.below.square.and.square.filled")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DialTheme.textLabel)
+                    .frame(width: 36, height: 36)
+                    .background(DialRowBackground(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                Picker("Preset", selection: presetSelection) {
+                    Text("Version 1")
+                        .tag(Optional<UUID>.none)
+
+                    ForEach(panel.presets) { preset in
+                        Text(preset.name)
+                            .tag(Optional(preset.id))
+                    }
+                }
+
+                if let activePresetID = panel.activePresetID {
+                    Divider()
+                    Button("Delete Current Preset", role: .destructive) {
+                        panel.deletePreset(id: activePresetID)
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(activePresetName)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .opacity(0.6)
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(DialTheme.textLabel)
+                .frame(height: 36)
+                .padding(.horizontal, 12)
+                .background(DialRowBackground(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                copyTextToPasteboard(panel.copyInstructionText)
+                copiedState = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    copiedState = false
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: copiedState ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Copy")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundStyle(DialTheme.textLabel)
+                .frame(height: 36)
+                .padding(.horizontal, 12)
+                .background(DialRowBackground(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func controlList(_ controls: [DialResolvedControl], measurement: Bool) -> some View {
+        ForEach(Array(controls.enumerated()), id: \.element.id) { index, control in
+            controlView(
+                control,
+                dividerVisibility: dialSectionDividerVisibility(at: index, in: controls),
+                measurement: measurement
+            )
+        }
+    }
+
+    private func controlView(
+        _ control: DialResolvedControl,
+        dividerVisibility: DialSectionDividerVisibility = DialSectionDividerVisibility(
+            showsTopDivider: false,
+            showsBottomDivider: false
+        ),
+        measurement: Bool
+    ) -> AnyView {
+        switch control.kind {
+        case let .slider(slider):
+            return AnyView(DialSliderRow(title: control.label, slider: slider))
+        case let .toggle(toggle):
+            return AnyView(DialToggleRow(title: control.label, isOn: Binding(get: toggle.get, set: toggle.set)))
+        case let .text(text):
+            let focusID = measurement ? nil : dialTextEntryFocusID(for: control.path)
+            return AnyView(
+                DialTextRow(
+                    title: control.label,
+                    text: Binding(get: text.get, set: text.set),
+                    placeholder: text.placeholder ?? "",
+                    focusID: focusID,
+                    onFocusChange: focusID.map { id in
+                        { isFocused in
+                            handleTextEntryFocusChange(isFocused: isFocused, id: id)
+                        }
+                    }
+                )
+            )
+        case let .color(color):
+            let focusID = measurement ? nil : dialTextEntryFocusID(for: control.path)
+            return AnyView(
+                DialColorRow(
+                    title: control.label,
+                    hexValue: Binding(get: color.get, set: color.set),
+                    focusID: focusID,
+                    onFocusChange: focusID.map { id in
+                        { isFocused in
+                            handleTextEntryFocusChange(isFocused: isFocused, id: id)
+                        }
+                    }
+                )
+            )
+        case let .select(select):
+            return AnyView(DialSelectRow(title: control.label, options: select.options, selection: Binding(get: select.get, set: select.set)))
+        case let .spring(spring):
+            return AnyView(
+                DialSpringControl(
+                    title: control.label,
+                    control: spring,
+                    isExpanded: accordionBinding(id: control.id, defaultOpen: true),
+                    dividerVisibility: dividerVisibility
+                )
+            )
+        case let .transition(transition):
+            let focusID = measurement ? nil : dialBezierTextEntryFocusID(for: control.path)
+            return AnyView(
+                DialTransitionControl(
+                    title: control.label,
+                    control: transition,
+                    isExpanded: accordionBinding(id: control.id, defaultOpen: true),
+                    dividerVisibility: dividerVisibility,
+                    bezierFocusID: focusID,
+                    onTextEntryFocusChange: focusID.map { id in
+                        { isFocused in
+                            handleTextEntryFocusChange(isFocused: isFocused, id: id)
+                        }
+                    }
+                )
+            )
+        case let .group(group):
+            return AnyView(
+                DialFolderSection(
+                    title: control.label,
+                    isExpanded: accordionBinding(id: control.id, defaultOpen: !group.collapsed),
+                    showsTopDivider: dividerVisibility.showsTopDivider,
+                    showsBottomDivider: dividerVisibility.showsBottomDivider
+                ) {
+                    controlList(group.children, measurement: measurement)
+                }
+            )
+        case let .action(action):
+            return AnyView(DialActionButton(title: control.label, action: action.trigger))
+        }
+    }
+
+    private func accordionBinding(id: String, defaultOpen: Bool) -> Binding<Bool> {
+        Binding(
+            get: { panel.accordionExpanded(for: id, default: defaultOpen) },
+            set: { panel.setAccordionExpanded($0, for: id) }
+        )
+    }
+
+    private func handleTextEntryFocusChange(isFocused: Bool, id: String) {
+        if isFocused {
+            focusedTextEntryID = id
+        } else if focusedTextEntryID == id {
+            focusedTextEntryID = nil
+        }
+    }
+
+    private func scrollToFocusedTextEntry(_ id: String, using proxy: ScrollViewProxy) {
+        let target = dialResolvedTextEntryScrollTarget(
+            textEntryBehavior: textEntryBehavior,
+            focusedTextEntryID: id,
+            keyboardOverlap: keyboardOverlap
+        )
+
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                proxy.scrollTo(id, anchor: target.anchor)
+            }
+        }
+    }
+}
+
+struct DialPanelContainer: View {
+    @ObservedObject var panel: AnyDialPanelBox
+    let defaultOpen: Bool
+    let inline: Bool
+
+    @State private var isOpen: Bool
+    @StateObject private var keyboardObserver = DialKeyboardObserver()
+
+    init(panel: AnyDialPanelBox, defaultOpen: Bool, inline: Bool) {
+        self.panel = panel
+        self.defaultOpen = defaultOpen
+        self.inline = inline
+        self._isOpen = State(initialValue: inline || defaultOpen)
+    }
+
+    var body: some View {
+        Group {
+            if inline {
+                expandedPanel
+            } else if isOpen {
+                expandedPanel
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topTrailing)))
+            } else {
+                collapsedButton
+                    .transition(.opacity)
+            }
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isOpen)
+    }
+
+    private var collapsedButton: some View {
+        Button {
+            isOpen = true
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(DialTheme.textRoot)
+                .frame(width: 42, height: 42)
+                .background(
+                    Circle()
+                        .fill(DialTheme.panelBackground)
+                )
+                .overlay {
+                    Circle()
+                        .stroke(DialTheme.border, lineWidth: 1)
+                }
+                .shadow(color: DialTheme.shadow, radius: 18, y: 6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var expandedPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            DialPanelControlsView(
+                panel: panel,
+                keyboardOverlap: keyboardObserver.overlap
+            )
+        }
+        .frame(width: 280)
+        .background {
+            DialPanelBackground(cornerRadius: 16)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(DialTheme.border, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: DialTheme.shadow, radius: 22, y: 8)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Text(panel.name)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DialTheme.textRoot)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            if !inline {
+                Button {
+                    isOpen = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(DialTheme.textLabel)
+                        .frame(width: 24, height: 24)
+                        .background(DialRowBackground(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct DialRowBackground: View {
+    var cornerRadius: CGFloat = 8
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(DialTheme.surface)
+    }
+}
+
+private struct DialMeasuredHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct DialPanelBackground: View {
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(DialTheme.panelBackground.opacity(0.94))
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(0.45))
+            )
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func dialTextEntryRowID(_ id: String?) -> some View {
+        if let id {
+            self.id(id)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func dialKeyboardDismissBehavior() -> some View {
+        #if canImport(UIKit)
+        self.scrollDismissesKeyboard(.interactively)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func dialWordsAutocapitalization() -> some View {
+        #if canImport(UIKit)
+        self.textInputAutocapitalization(.words)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func dialCharactersAutocapitalization() -> some View {
+        #if canImport(UIKit)
+        self.textInputAutocapitalization(.characters)
+        #else
+        self
+        #endif
+    }
+}
+
+private extension DialTextEntryScrollTarget {
+    var anchor: UnitPoint {
+        switch self {
+        case .bottom:
+            return .bottom
+        case .drawerEditing:
+            return .center
+        }
+    }
+}
+
+private func dialFallbackFABAlignment(for position: DialPosition) -> Alignment {
+    switch position {
+    case .topRight:
+        return .topTrailing
+    case .topLeft:
+        return .topLeading
+    case .bottomRight:
+        return .bottomTrailing
+    case .bottomLeft:
+        return .bottomLeading
+    }
+}
+
+private extension EdgeInsets {
+    #if canImport(UIKit)
+    var uiEdgeInsets: UIEdgeInsets {
+        UIEdgeInsets(top: top, left: leading, bottom: bottom, right: trailing)
+    }
+    #endif
+}
+
+#if canImport(UIKit)
+private struct DraggableFABOverlay: UIViewRepresentable {
+    let containerSize: CGSize
+    let safeAreaInsets: UIEdgeInsets
+    let initialPosition: DialPosition
+    @Binding var position: CGPoint?
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(position: $position, initialPosition: initialPosition, action: action)
+    }
+
+    func makeUIView(context: Context) -> FABContainerView {
+        let view = FABContainerView()
+        view.backgroundColor = .clear
+
+        let fabView = context.coordinator.makeFABView()
+        view.fabView = fabView
+        view.addSubview(fabView)
+
+        context.coordinator.containerView = view
+        context.coordinator.fabView = fabView
+        return view
+    }
+
+    func updateUIView(_ uiView: FABContainerView, context: Context) {
+        let effectiveSize = uiView.bounds.size == .zero ? containerSize : uiView.bounds.size
+        context.coordinator.containerSize = effectiveSize == .zero ? containerSize : effectiveSize
+        context.coordinator.safeAreaInsets = safeAreaInsets
+        context.coordinator.initialPosition = initialPosition
+        context.coordinator.updateLayout()
+    }
+
+    final class Coordinator: NSObject {
+        private let diameter: CGFloat = 56
+        private let horizontalMargin: CGFloat = 8
+        private let topMargin: CGFloat = 8
+        private let bottomMargin: CGFloat = 2
+        private let position: Binding<CGPoint?>
+        private let action: () -> Void
+
+        weak var containerView: FABContainerView?
+        weak var fabView: UIView?
+        var containerSize: CGSize = .zero
+        var safeAreaInsets: UIEdgeInsets = .zero
+        var initialPosition: DialPosition
+        private var panStartCenter: CGPoint = .zero
+        private var currentCenter: CGPoint?
+        private var lastContainerSize: CGSize = .zero
+        private var isPanning = false
+
+        init(position: Binding<CGPoint?>, initialPosition: DialPosition, action: @escaping () -> Void) {
+            self.position = position
+            self.initialPosition = initialPosition
+            self.action = action
+        }
+
+        func makeFABView() -> UIView {
+            let fab = UIView(frame: CGRect(x: 0, y: 0, width: diameter, height: diameter))
+            fab.backgroundColor = UIColor(white: 0.13, alpha: 0.96)
+            fab.layer.cornerRadius = diameter / 2
+            fab.layer.cornerCurve = .continuous
+            fab.layer.borderWidth = 1
+            fab.layer.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+            fab.layer.shadowColor = UIColor.black.cgColor
+            fab.layer.shadowOpacity = 0.25
+            fab.layer.shadowRadius = 16
+            fab.layer.shadowOffset = CGSize(width: 0, height: 4)
+            fab.layer.shadowPath = UIBezierPath(ovalIn: fab.bounds).cgPath
+
+            let imageView = UIImageView(image: UIImage(systemName: "slider.horizontal.3"))
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            imageView.tintColor = .white
+            imageView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+            fab.addSubview(imageView)
+
+            NSLayoutConstraint.activate([
+                imageView.centerXAnchor.constraint(equalTo: fab.centerXAnchor),
+                imageView.centerYAnchor.constraint(equalTo: fab.centerYAnchor)
+            ])
+
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+            tap.require(toFail: pan)
+            fab.addGestureRecognizer(tap)
+            fab.addGestureRecognizer(pan)
+
+            return fab
+        }
+
+        func updateLayout() {
+            guard let fabView else { return }
+            fabView.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+            fabView.layer.shadowPath = UIBezierPath(ovalIn: fabView.bounds).cgPath
+            let effectiveContainerSize = resolvedContainerSize()
+            containerSize = effectiveContainerSize
+
+            let defaultCenter = dialDefaultFABCenter(
+                for: initialPosition,
+                in: effectiveContainerSize,
+                safeAreaInsets: safeAreaInsets,
+                diameter: diameter,
+                horizontalMargin: horizontalMargin,
+                topMargin: topMargin,
+                bottomMargin: bottomMargin
+            )
+            let targetCenter = dialClampedFABCenter(
+                currentCenter ?? position.wrappedValue ?? defaultCenter,
+                in: effectiveContainerSize,
+                safeAreaInsets: safeAreaInsets,
+                diameter: diameter,
+                horizontalMargin: horizontalMargin,
+                topMargin: topMargin,
+                bottomMargin: bottomMargin
+            )
+            let sizeChanged = lastContainerSize != effectiveContainerSize
+
+            if fabView.center == .zero || sizeChanged || (!isPanning && distance(from: fabView.center, to: targetCenter) > 0.5) {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                fabView.center = targetCenter
+                CATransaction.commit()
+            }
+
+            currentCenter = targetCenter
+            lastContainerSize = effectiveContainerSize
+        }
+
+        @objc private func handleTap() {
+            action()
+        }
+
+        @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            guard let fabView, let containerView else { return }
+
+            let translation = recognizer.translation(in: containerView)
+            let effectiveContainerSize = resolvedContainerSize(using: containerView)
+            containerSize = effectiveContainerSize
+
+            switch recognizer.state {
+            case .began:
+                isPanning = true
+                panStartCenter = fabView.center
+                currentCenter = fabView.center
+                animateDragging(true, on: fabView)
+
+            case .changed:
+                let nextCenter = dialClampedFABCenter(
+                    CGPoint(x: panStartCenter.x + translation.x, y: panStartCenter.y + translation.y),
+                    in: effectiveContainerSize,
+                    safeAreaInsets: safeAreaInsets,
+                    diameter: diameter,
+                    horizontalMargin: horizontalMargin,
+                    topMargin: topMargin,
+                    bottomMargin: bottomMargin
+                )
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                fabView.center = nextCenter
+                CATransaction.commit()
+                currentCenter = nextCenter
+
+            case .ended, .cancelled, .failed:
+                let finalCenter = dialClampedFABCenter(
+                    CGPoint(x: panStartCenter.x + translation.x, y: panStartCenter.y + translation.y),
+                    in: effectiveContainerSize,
+                    safeAreaInsets: safeAreaInsets,
+                    diameter: diameter,
+                    horizontalMargin: horizontalMargin,
+                    topMargin: topMargin,
+                    bottomMargin: bottomMargin
+                )
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                fabView.center = finalCenter
+                CATransaction.commit()
+                currentCenter = finalCenter
+                isPanning = false
+                DispatchQueue.main.async {
+                    self.position.wrappedValue = finalCenter
+                }
+                animateDragging(false, on: fabView)
+
+            default:
+                break
+            }
+        }
+
+        private func animateDragging(_ dragging: Bool, on view: UIView) {
+            UIView.animate(withDuration: 0.16, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+                view.transform = dragging ? CGAffineTransform(scaleX: 1.24, y: 1.24) : .identity
+                view.layer.shadowOpacity = dragging ? 0.68 : 0.25
+                view.layer.shadowRadius = dragging ? 28 : 16
+                view.layer.shadowOffset = dragging ? .zero : CGSize(width: 0, height: 4)
+            }
+        }
+
+        private func resolvedContainerSize(using view: UIView? = nil) -> CGSize {
+            let liveSize = view?.bounds.size ?? containerView?.bounds.size ?? .zero
+            return liveSize == .zero ? containerSize : liveSize
+        }
+
+        private func distance(from lhs: CGPoint, to rhs: CGPoint) -> CGFloat {
+            hypot(lhs.x - rhs.x, lhs.y - rhs.y)
+        }
+    }
+}
+
+private final class FABContainerView: UIView {
+    weak var fabView: UIView?
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard let fabView else { return false }
+        let hitFrame = fabView.frame.insetBy(dx: -24, dy: -24)
+        return hitFrame.contains(point)
+    }
+}
+#endif
+
+private let dialFolderIconAnimation = Animation.spring(duration: 0.35, bounce: 0.15)
+private let dialFolderContentAnimation = Animation.spring(duration: 0.35, bounce: 0.1)
+
+private struct DialFolderSection<Content: View>: View {
+    let title: String
+    @Binding var isExpanded: Bool
+    let showsTopDivider: Bool
+    let showsBottomDivider: Bool
+    let content: Content
+
+    @State private var measuredContentHeight: CGFloat?
+
+    init(
+        title: String,
+        isExpanded: Binding<Bool>,
+        showsTopDivider: Bool = false,
+        showsBottomDivider: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self._isExpanded = isExpanded
+        self.showsTopDivider = showsTopDivider
+        self.showsBottomDivider = showsBottomDivider
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(dialFolderContentAnimation) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DialTheme.textSection)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DialTheme.textLabel.opacity(0.8))
+                        .rotationEffect(.degrees(isExpanded ? 0 : 180))
+                        .animation(dialFolderIconAnimation, value: isExpanded)
+                }
+                .frame(height: 36)
+            }
+            .buttonStyle(.plain)
+
+            VStack(spacing: 6) {
+                content
+            }
+            .padding(.bottom, 10)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(key: DialFolderContentHeightKey.self, value: proxy.size.height)
+                }
+            }
+            .frame(height: isExpanded ? measuredContentHeight : 0, alignment: .top)
+            .clipped()
+            .opacity(isExpanded ? 1 : 0)
+            .allowsHitTesting(isExpanded)
+            .accessibilityHidden(!isExpanded)
+            .animation(dialFolderContentAnimation, value: isExpanded)
+            .animation(dialFolderContentAnimation, value: measuredContentHeight)
+        }
+        .onPreferenceChange(DialFolderContentHeightKey.self) { newHeight in
+            guard abs((measuredContentHeight ?? 0) - newHeight) > 0.5 else {
+                return
+            }
+
+            measuredContentHeight = newHeight
+        }
+        .overlay(alignment: .top) {
+            if showsTopDivider {
+                Rectangle()
+                    .fill(DialTheme.borderSoft)
+                    .frame(height: 1)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showsBottomDivider {
+                Rectangle()
+                    .fill(DialTheme.borderSoft)
+                    .frame(height: 1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct DialFolderContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct DialSegmentOption<Value: Hashable>: Identifiable {
+    let value: Value
+    let label: String
+
+    var id: String { label }
+}
+
+private let dialSegmentedControlAnimation = Animation.timingCurve(0.25, 1, 0.5, 1, duration: 0.2)
+
+private struct DialSegmentedControl<Value: Hashable>: View {
+    let options: [DialSegmentOption<Value>]
+    @Binding var selection: Value
+
+    var body: some View {
+        GeometryReader { proxy in
+            let inset: CGFloat = 2
+            let segmentWidth = max((proxy.size.width - inset * 2) / CGFloat(max(options.count, 1)), 0)
+            let segmentHeight = max(proxy.size.height - inset * 2, 0)
+            let selectedIndex = CGFloat(options.firstIndex(where: { $0.value == selection }) ?? 0)
+
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.clear)
+
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(DialTheme.surfaceActive)
+                    .frame(width: segmentWidth, height: segmentHeight)
+                    .offset(x: selectedIndex * segmentWidth + inset)
+                    .animation(dialSegmentedControlAnimation, value: selection)
+
+                HStack(spacing: 0) {
+                    ForEach(options) { option in
+                        Button {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.84)) {
+                                selection = option.value
+                            }
+                        } label: {
+                            Text(option.label)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(selection == option.value ? Color.white.opacity(0.82) : DialTheme.textLabel)
+                                .frame(width: segmentWidth, height: segmentHeight)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(inset)
+            }
+        }
+        .frame(width: CGFloat(max(options.count, 2)) * 56, height: 32)
+        .background(DialRowBackground(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct DialSegmentedRow<Value: Hashable>: View {
+    let title: String
+    let options: [DialSegmentOption<Value>]
+    @Binding var selection: Value
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(DialTheme.textLabel)
+
+            Spacer(minLength: 8)
+
+            DialSegmentedControl(options: options, selection: $selection)
+        }
+        .frame(height: 36)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .background(DialRowBackground(cornerRadius: 8))
+    }
+}
+
+private struct DialToggleRow: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        DialSegmentedRow(
+            title: title,
+            options: [
+                .init(value: false, label: "Off"),
+                .init(value: true, label: "On")
+            ],
+            selection: $isOn
+        )
+    }
+}
+
+private struct DialSelectRow: View {
+    let title: String
+    let options: [DialOption]
+    @Binding var selection: String
+
+    private var selectedLabel: String {
+        options.first(where: { $0.value == selection })?.label ?? selection
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(options) { option in
+                Button(option.label) {
+                    selection = option.value
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(DialTheme.textLabel)
+
+                Spacer(minLength: 10)
+
+                Text(selectedLabel)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(DialTheme.textLabel)
+                    .lineLimit(1)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DialTheme.textLabel.opacity(0.7))
+            }
+            .frame(height: 36)
+            .padding(.horizontal, 12)
+            .background(DialRowBackground(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct DialTextRow: View {
+    let title: String
+    @Binding var text: String
+    let placeholder: String
+    let focusID: String?
+    let onFocusChange: ((Bool) -> Void)?
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(DialTheme.textLabel)
+
+            TextField(placeholder, text: $text)
+                .dialWordsAutocapitalization()
+                .multilineTextAlignment(.trailing)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(DialTheme.textLabel)
+                .tint(.white)
+                .focused($isFocused)
+        }
+        .frame(height: 36)
+        .padding(.horizontal, 12)
+        .background(DialRowBackground(cornerRadius: 8))
+        .dialTextEntryRowID(focusID)
+        .onChange(of: isFocused) { _, newValue in
+            onFocusChange?(newValue)
+        }
+    }
+}
+
+private struct DialColorRow: View {
+    let title: String
+    @Binding var hexValue: String
+    let focusID: String?
+    let onFocusChange: ((Bool) -> Void)?
+
+    @State private var draft: String
+    @FocusState private var isFocused: Bool
+
+    init(title: String, hexValue: Binding<String>, focusID: String? = nil, onFocusChange: ((Bool) -> Void)? = nil) {
+        self.title = title
+        self._hexValue = hexValue
+        self.focusID = focusID
+        self.onFocusChange = onFocusChange
+        self._draft = State(initialValue: hexValue.wrappedValue.uppercased())
+    }
+
+    private var pickerBinding: Binding<Color> {
+        Binding {
+            dialColor(from: hexValue) ?? .white
+        } set: { newColor in
+            if let hex = dialHexString(from: newColor, prefersAlphaOutput: dialHexUsesExplicitAlpha(hexValue)) {
+                hexValue = hex
+                draft = hex
+            }
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(DialTheme.textLabel)
+
+            Spacer(minLength: 8)
+
+            TextField("#FFFFFF", text: $draft)
+                .dialCharactersAutocapitalization()
+                .disableAutocorrection(true)
+                .multilineTextAlignment(.trailing)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(DialTheme.textLabel)
+                .frame(width: 88)
+                .focused($isFocused)
+                .onChange(of: hexValue) { _, newValue in
+                    draft = newValue.uppercased()
+                }
+                .onSubmit(commitDraft)
+
+            ColorPicker("", selection: pickerBinding, supportsOpacity: true)
+                .labelsHidden()
+                .frame(width: 24, height: 24)
+        }
+        .frame(height: 36)
+        .padding(.horizontal, 12)
+        .background(DialRowBackground(cornerRadius: 8))
+        .dialTextEntryRowID(focusID)
+        .onChange(of: isFocused) { _, newValue in
+            onFocusChange?(newValue)
+        }
+    }
+
+    private func commitDraft() {
+        let filtered = String(draft.uppercased().filter { $0.isHexDigit || $0 == "#" })
+        let normalized: String
+        if filtered.isEmpty {
+            normalized = hexValue
+        } else if filtered.first == "#" {
+            normalized = String(filtered.prefix(9))
+        } else {
+            normalized = "#" + String(filtered.prefix(8))
+        }
+
+        if dialIsValidHexColor(normalized) {
+            hexValue = normalized
+            draft = normalized
+        } else {
+            draft = hexValue.uppercased()
+        }
+    }
+}
+
+#if canImport(UIKit)
+private struct DialSliderInteractionSurface: UIViewRepresentable {
+    let onTouchBegan: () -> Void
+    let onPanBegan: (CGSize, CGRect) -> Void
+    let onPanChanged: (CGSize, CGRect) -> Void
+    let onPanEnded: () -> Void
+
+    func makeUIView(context: Context) -> DialSliderInteractionView {
+        DialSliderInteractionView()
+    }
+
+    func updateUIView(_ uiView: DialSliderInteractionView, context: Context) {
+        uiView.onTouchBegan = onTouchBegan
+        uiView.onPanBegan = onPanBegan
+        uiView.onPanChanged = onPanChanged
+        uiView.onPanEnded = onPanEnded
+    }
+}
+
+private final class DialSliderInteractionView: UIView, UIGestureRecognizerDelegate {
+    var onTouchBegan: (() -> Void)?
+    var onPanBegan: ((CGSize, CGRect) -> Void)?
+    var onPanChanged: ((CGSize, CGRect) -> Void)?
+    var onPanEnded: (() -> Void)?
+
+    private lazy var panRecognizer: DialHorizontalIntentPanGestureRecognizer = {
+        let recognizer = DialHorizontalIntentPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        recognizer.onTouchBegan = { [weak self] in
+            self?.onTouchBegan?()
+        }
+        recognizer.onTouchEnded = { [weak self] in
+            self?.onPanEnded?()
+        }
+        recognizer.delegate = self
+        return recognizer
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        addGestureRecognizer(panRecognizer)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    @objc private func handlePan(_ recognizer: DialHorizontalIntentPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            onPanBegan?(recognizer.translation, bounds)
+        case .changed:
+            onPanChanged?(recognizer.translation, bounds)
+        case .ended, .cancelled:
+            onPanEnded?()
+        default:
+            break
+        }
+    }
+}
+
+private final class DialHorizontalIntentPanGestureRecognizer: UIGestureRecognizer {
+    var onTouchBegan: (() -> Void)?
+    var onTouchEnded: (() -> Void)?
+
+    private(set) var currentLocation: CGPoint = .zero
+    var translation: CGSize {
+        CGSize(width: currentLocation.x - startLocation.x, height: currentLocation.y - startLocation.y)
+    }
+
+    private var startLocation: CGPoint = .zero
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard state == .possible, let touch = touches.first, touches.count == 1 else {
+            state = .failed
+            return
+        }
+
+        let location = touch.location(in: view)
+        startLocation = location
+        currentLocation = location
+        onTouchBegan?()
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first, let view else {
+            state = .failed
+            return
+        }
+
+        currentLocation = touch.location(in: view)
+
+        switch state {
+        case .possible:
+            let translation = CGSize(
+                width: currentLocation.x - startLocation.x,
+                height: currentLocation.y - startLocation.y
+            )
+
+            switch dialResolveSliderGestureDisposition(translation: translation) {
+            case .undecided:
+                break
+            case .slider:
+                state = .began
+            case .scroll:
+                onTouchEnded?()
+                state = .failed
+            }
+        case .began:
+            state = .changed
+        case .changed:
+            break
+        default:
+            break
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        if let touch = touches.first, let view {
+            currentLocation = touch.location(in: view)
+        }
+
+        switch state {
+        case .began, .changed:
+            state = .ended
+        default:
+            onTouchEnded?()
+            state = .failed
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        onTouchEnded?()
+        state = (state == .began || state == .changed) ? .cancelled : .failed
+    }
+
+    override func reset() {
+        currentLocation = .zero
+        startLocation = .zero
+    }
+}
+#endif
+
+private struct DialSliderRow: View {
+    let title: String
+    let slider: DialResolvedSlider
+
+    @State private var isInteracting = false
+    @State private var interactionStartValue: Double?
+    @State private var lastHapticValue: Double?
+    #if canImport(UIKit)
+    @State private var feedbackGenerator: UISelectionFeedbackGenerator?
+    #endif
+
+    private var value: Double {
+        slider.get()
+    }
+
+    private var progress: CGFloat {
+        guard slider.range.upperBound > slider.range.lowerBound else { return 0 }
+        return CGFloat((value - slider.range.lowerBound) / (slider.range.upperBound - slider.range.lowerBound))
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = max(proxy.size.width, 1)
+
+            ZStack(alignment: .leading) {
+                DialRowBackground(cornerRadius: 8)
+
+                HStack(spacing: 0) {
+                    ForEach(0..<11, id: \.self) { _ in
+                        Capsule()
+                            .fill(Color.white.opacity(isInteracting ? 0.15 : 0))
+                            .frame(width: 1, height: 8)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.horizontal, 8)
+
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(isInteracting ? 0.14 : 0.10))
+                    .frame(width: width * progress)
+
+                RoundedRectangle(cornerRadius: 99, style: .continuous)
+                    .fill(Color.white.opacity(0.8))
+                    .frame(width: 3, height: 20)
+                    .offset(x: max(width * progress - 2, 6))
+
+                HStack(spacing: 12) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(DialTheme.textLabel)
+
+                    Spacer(minLength: 0)
+
+                    Text(formattedValue)
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundStyle(isInteracting ? Color.white : DialTheme.textLabel)
+                }
+                .padding(.horizontal, 10)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            #if canImport(UIKit)
+            .overlay {
+                DialSliderInteractionSurface(
+                    onTouchBegan: {
+                        beginInteraction()
+                    },
+                    onPanBegan: { translation, bounds in
+                        beginInteraction()
+                        updateValue(translation: translation.width, width: bounds.width)
+                    },
+                    onPanChanged: { translation, bounds in
+                        if !isInteracting {
+                            beginInteraction()
+                        }
+                        updateValue(translation: translation.width, width: bounds.width)
+                    },
+                    onPanEnded: {
+                        endInteraction()
+                    }
+                )
+            }
+            #else
+            .gesture(
+                DragGesture(minimumDistance: 10)
+                    .onChanged { gesture in
+                        guard dialResolveSliderGestureDisposition(translation: gesture.translation) == .slider else {
+                            return
+                        }
+
+                        if !isInteracting {
+                            beginInteraction()
+                        }
+                        updateValue(translation: gesture.translation.width, width: width)
+                    }
+                    .onEnded { _ in
+                        endInteraction()
+                    }
+            )
+            #endif
+        }
+        .frame(height: 36)
+    }
+
+    private var formattedValue: String {
+        if let unit = slider.unit {
+            return "\(value.formatted(step: slider.step))\(unit)"
+        }
+        return value.formatted(step: slider.step)
+    }
+
+    private func updateValue(translation: CGFloat, width: CGFloat) {
+        let snapped = dialSliderValueByApplyingTranslation(
+            translation,
+            width: width,
+            initialValue: interactionStartValue ?? value,
+            range: slider.range,
+            step: slider.step
+        )
+
+        if dialShouldEmitSliderHaptic(previousValue: lastHapticValue, nextValue: snapped) {
+            #if canImport(UIKit)
+            feedbackGenerator?.selectionChanged()
+            feedbackGenerator?.prepare()
+            #endif
+        }
+
+        lastHapticValue = snapped
+        slider.set(snapped)
+    }
+
+    private func beginInteraction() {
+        guard !isInteracting else {
+            return
+        }
+
+        isInteracting = true
+        interactionStartValue = value
+        lastHapticValue = value
+        #if canImport(UIKit)
+        let generator = UISelectionFeedbackGenerator()
+        generator.prepare()
+        feedbackGenerator = generator
+        #endif
+    }
+
+    private func endInteraction() {
+        guard isInteracting else {
+            return
+        }
+
+        isInteracting = false
+        interactionStartValue = nil
+        lastHapticValue = nil
+        #if canImport(UIKit)
+        feedbackGenerator = nil
+        #endif
+    }
+}
+
+private struct DialActionButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(DialTheme.textLabel)
+            .frame(height: 36)
+            .padding(.horizontal, 12)
+            .background(DialRowBackground(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct DialSpringControl: View {
+    let title: String
+    let control: DialResolvedSpring
+    @Binding var isExpanded: Bool
+    let dividerVisibility: DialSectionDividerVisibility
+
+    var body: some View {
+        DialFolderSection(
+            title: title,
+            isExpanded: $isExpanded,
+            showsTopDivider: dividerVisibility.showsTopDivider,
+            showsBottomDivider: dividerVisibility.showsBottomDivider
+        ) {
+            SpringVisualization(spring: control.get())
+                .frame(height: 140)
+
+            DialSegmentedRow(
+                title: "Type",
+                options: DialSpringEditorMode.allCases.map { .init(value: $0, label: $0.label) },
+                selection: Binding(
+                    get: { control.get().editorMode },
+                    set: { mode in
+                        switch mode {
+                        case .simple:
+                            control.set(control.get().updatingTime())
+                        case .advanced:
+                            control.set(control.get().updatingPhysics())
+                        }
+                    }
+                )
+            )
+
+            switch control.get() {
+            case let .time(duration, bounce):
+                DialSliderRow(title: "Duration", slider: slider(range: 0.1...1, step: 0.05, unit: "s", get: { duration }, set: { control.set(control.get().updatingTime(duration: $0)) }))
+                DialSliderRow(title: "Bounce", slider: slider(range: 0...1, step: 0.05, get: { bounce }, set: { control.set(control.get().updatingTime(bounce: $0)) }))
+            case let .physics(stiffness, damping, mass):
+                DialSliderRow(title: "Stiffness", slider: slider(range: 1...1000, step: 1, get: { stiffness }, set: { control.set(control.get().updatingPhysics(stiffness: $0)) }))
+                DialSliderRow(title: "Damping", slider: slider(range: 1...100, step: 1, get: { damping }, set: { control.set(control.get().updatingPhysics(damping: $0)) }))
+                DialSliderRow(title: "Mass", slider: slider(range: 0.1...10, step: 0.1, get: { mass }, set: { control.set(control.get().updatingPhysics(mass: $0)) }))
+            }
+        }
+    }
+}
+
+private struct DialTransitionControl: View {
+    let title: String
+    let control: DialResolvedTransition
+    @Binding var isExpanded: Bool
+    let dividerVisibility: DialSectionDividerVisibility
+    let bezierFocusID: String?
+    let onTextEntryFocusChange: ((Bool) -> Void)?
+
+    var body: some View {
+        DialFolderSection(
+            title: title,
+            isExpanded: $isExpanded,
+            showsTopDivider: dividerVisibility.showsTopDivider,
+            showsBottomDivider: dividerVisibility.showsBottomDivider
+        ) {
+            switch control.get() {
+            case let .easing(_, bezier):
+                EasingVisualization(bezier: bezier)
+                    .frame(height: 140)
+            case let .spring(spring):
+                SpringVisualization(spring: spring)
+                    .frame(height: 140)
+            }
+
+            DialSegmentedRow(
+                title: "Type",
+                options: DialTransitionMode.allCases.map { .init(value: $0, label: $0.label) },
+                selection: Binding(
+                    get: { control.get().mode },
+                    set: { mode in
+                        control.set(control.get().switching(to: mode))
+                    }
+                )
+            )
+
+            switch control.get() {
+            case let .easing(duration, bezier):
+                DialSliderRow(title: "x1", slider: slider(range: 0...1, step: 0.01, get: { bezier.x1 }, set: { updateBezier(x1: $0) }))
+                DialSliderRow(title: "y1", slider: slider(range: -1...2, step: 0.01, get: { bezier.y1 }, set: { updateBezier(y1: $0) }))
+                DialSliderRow(title: "x2", slider: slider(range: 0...1, step: 0.01, get: { bezier.x2 }, set: { updateBezier(x2: $0) }))
+                DialSliderRow(title: "y2", slider: slider(range: -1...2, step: 0.01, get: { bezier.y2 }, set: { updateBezier(y2: $0) }))
+                DialSliderRow(title: "Duration", slider: slider(range: 0.1...2, step: 0.05, unit: "s", get: { duration }, set: { updateDuration($0) }))
+                DialBezierRow(
+                    bezier: bezier,
+                    focusID: bezierFocusID,
+                    onFocusChange: onTextEntryFocusChange
+                ) { newBezier in
+                    control.set(.easing(duration: duration, bezier: newBezier))
+                }
+            case let .spring(spring):
+                switch spring {
+                case let .time(duration, bounce):
+                    DialSliderRow(title: "Duration", slider: slider(range: 0.1...1, step: 0.05, unit: "s", get: { duration }, set: { updateSpringTime(duration: $0) }))
+                    DialSliderRow(title: "Bounce", slider: slider(range: 0...1, step: 0.05, get: { bounce }, set: { updateSpringTime(bounce: $0) }))
+                case let .physics(stiffness, damping, mass):
+                    DialSliderRow(title: "Stiffness", slider: slider(range: 1...1000, step: 10, get: { stiffness }, set: { updateSpringPhysics(stiffness: $0) }))
+                    DialSliderRow(title: "Damping", slider: slider(range: 1...100, step: 1, get: { damping }, set: { updateSpringPhysics(damping: $0) }))
+                    DialSliderRow(title: "Mass", slider: slider(range: 0.1...10, step: 0.1, get: { mass }, set: { updateSpringPhysics(mass: $0) }))
+                }
+            }
+        }
+    }
+
+    private func updateDuration(_ duration: Double) {
+        if case let .easing(_, bezier) = control.get() {
+            control.set(.easing(duration: duration, bezier: bezier))
+        }
+    }
+
+    private func updateBezier(x1: Double? = nil, y1: Double? = nil, x2: Double? = nil, y2: Double? = nil) {
+        guard case let .easing(duration, bezier) = control.get() else { return }
+        control.set(
+            .easing(
+                duration: duration,
+                bezier: DialBezier(
+                    x1: x1 ?? bezier.x1,
+                    y1: y1 ?? bezier.y1,
+                    x2: x2 ?? bezier.x2,
+                    y2: y2 ?? bezier.y2
+                )
+            )
+        )
+    }
+
+    private func updateSpringTime(duration: Double? = nil, bounce: Double? = nil) {
+        switch control.get() {
+        case .easing:
+            break
+        case let .spring(spring):
+            control.set(.spring(spring.updatingTime(duration: duration, bounce: bounce)))
+        }
+    }
+
+    private func updateSpringPhysics(stiffness: Double? = nil, damping: Double? = nil, mass: Double? = nil) {
+        switch control.get() {
+        case .easing:
+            break
+        case let .spring(spring):
+            control.set(.spring(spring.updatingPhysics(stiffness: stiffness, damping: damping, mass: mass)))
+        }
+    }
+}
+
+private struct DialBezierRow: View {
+    let bezier: DialBezier
+    let focusID: String?
+    let onFocusChange: ((Bool) -> Void)?
+    let onChange: (DialBezier) -> Void
+
+    @State private var draft: String
+    @FocusState private var isFocused: Bool
+
+    init(
+        bezier: DialBezier,
+        focusID: String? = nil,
+        onFocusChange: ((Bool) -> Void)? = nil,
+        onChange: @escaping (DialBezier) -> Void
+    ) {
+        self.bezier = bezier
+        self.focusID = focusID
+        self.onFocusChange = onFocusChange
+        self.onChange = onChange
+        self._draft = State(initialValue: Self.format(bezier))
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("Bezier")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(DialTheme.textLabel)
+
+            TextField("0.25, 0.1, 0.25, 1", text: $draft)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(DialTheme.textLabel)
+                .focused($isFocused)
+                .onSubmit(commit)
+                .onChange(of: Self.format(bezier)) { _, newValue in
+                    guard !isFocused else { return }
+                    draft = newValue
+                }
+        }
+        .frame(height: 36)
+        .padding(.horizontal, 12)
+        .background(DialRowBackground(cornerRadius: 8))
+        .dialTextEntryRowID(focusID)
+        .onChange(of: isFocused) { _, newValue in
+            onFocusChange?(newValue)
+        }
+    }
+
+    private func commit() {
+        let parts = draft.split(separator: ",").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 4,
+              let x1 = parts[0],
+              let y1 = parts[1],
+              let x2 = parts[2],
+              let y2 = parts[3] else {
+            draft = Self.format(bezier)
+            return
+        }
+        onChange(DialBezier(x1: x1, y1: y1, x2: x2, y2: y2))
+        draft = Self.format(DialBezier(x1: x1, y1: y1, x2: x2, y2: y2))
+    }
+
+    private static func format(_ bezier: DialBezier) -> String {
+        [bezier.x1, bezier.y1, bezier.x2, bezier.y2]
+            .map { $0.formatted(step: 0.01) }
+            .joined(separator: ", ")
+    }
+}
+
+private struct SpringVisualization: View {
+    let spring: DialSpring
+
+    var body: some View {
+        Canvas { context, size in
+            let width = size.width
+            let height = size.height
+            let points = generateCurve(in: width, height: height)
+
+            for index in 1..<4 {
+                let horizontalY = (height / 4) * CGFloat(index)
+                let verticalX = (width / 4) * CGFloat(index)
+
+                var horizontal = Path()
+                horizontal.move(to: CGPoint(x: 0, y: horizontalY))
+                horizontal.addLine(to: CGPoint(x: width, y: horizontalY))
+                context.stroke(horizontal, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+
+                var vertical = Path()
+                vertical.move(to: CGPoint(x: verticalX, y: 0))
+                vertical.addLine(to: CGPoint(x: verticalX, y: height))
+                context.stroke(vertical, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+            }
+
+            var midpoint = Path()
+            midpoint.move(to: CGPoint(x: 0, y: height / 2))
+            midpoint.addLine(to: CGPoint(x: width, y: height / 2))
+            context.stroke(midpoint, with: .color(Color.white.opacity(0.15)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+            var curve = Path()
+            curve.addLines(points)
+            context.stroke(curve, with: .color(Color.white.opacity(0.62)), lineWidth: 2)
+        }
+        .background(DialRowBackground(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func generateCurve(in width: CGFloat, height: CGFloat) -> [CGPoint] {
+        let physics = spring.resolvedPhysics
+        let steps = 100
+        let duration = 2.0
+        let dt = duration / Double(steps)
+
+        var position = 0.0
+        var velocity = 0.0
+        var rawValues: [(time: Double, value: Double)] = []
+
+        for index in 0...steps {
+            let time = Double(index) * dt
+            rawValues.append((time: time, value: position))
+
+            let target = 1.0
+            let springForce = -physics.stiffness * (position - target)
+            let dampingForce = -physics.damping * velocity
+            let acceleration = (springForce + dampingForce) / physics.mass
+
+            velocity += acceleration * dt
+            position += velocity * dt
+        }
+
+        let values = rawValues.map(\.value)
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 1
+        let valueRange = max(maxValue - minValue, 0.001)
+
+        return rawValues.map { point in
+            let x = CGFloat(point.time / duration) * width
+            let normalized = (point.value - minValue) / valueRange
+            let y = height - CGFloat(normalized) * height * 0.6 - height * 0.2
+            return CGPoint(x: x, y: y)
+        }
+    }
+}
+
+private struct EasingVisualization: View {
+    let bezier: DialBezier
+
+    var body: some View {
+        Canvas { context, size in
+            for index in 1..<4 {
+                let horizontalY = (size.height / 4) * CGFloat(index)
+                let verticalX = (size.width / 4) * CGFloat(index)
+
+                var horizontal = Path()
+                horizontal.move(to: CGPoint(x: 0, y: horizontalY))
+                horizontal.addLine(to: CGPoint(x: size.width, y: horizontalY))
+                context.stroke(horizontal, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+
+                var vertical = Path()
+                vertical.move(to: CGPoint(x: verticalX, y: 0))
+                vertical.addLine(to: CGPoint(x: verticalX, y: size.height))
+                context.stroke(vertical, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+            }
+
+            var axis = Path()
+            axis.move(to: .init(x: 0, y: size.height))
+            axis.addLine(to: .init(x: size.width, y: 0))
+            context.stroke(axis, with: .color(Color.white.opacity(0.15)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+            var curve = Path()
+            let points = easingPoints(in: size)
+            curve.addLines(points)
+            context.stroke(curve, with: .color(Color.white.opacity(0.62)), lineWidth: 2)
+        }
+        .background(DialRowBackground(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func easingPoints(in size: CGSize) -> [CGPoint] {
+        (0...80).map { index in
+            let t = CGFloat(index) / 80
+            let point = cubicPoint(for: t)
+            return CGPoint(x: point.x * size.width, y: size.height - point.y * size.height)
+        }
+    }
+
+    private func cubicPoint(for t: CGFloat) -> CGPoint {
+        CGPoint(
+            x: cubic(t, 0, CGFloat(bezier.x1), CGFloat(bezier.x2), 1),
+            y: cubic(t, 0, CGFloat(bezier.y1), CGFloat(bezier.y2), 1)
+        )
+    }
+
+    private func cubic(_ t: CGFloat, _ a: CGFloat, _ b: CGFloat, _ c: CGFloat, _ d: CGFloat) -> CGFloat {
+        let mt = 1 - t
+        return mt * mt * mt * a
+            + 3 * mt * mt * t * b
+            + 3 * mt * t * t * c
+            + t * t * t * d
+    }
+}
+
+private func slider(
+    range: ClosedRange<Double>,
+    step: Double,
+    unit: String? = nil,
+    get: @escaping () -> Double,
+    set: @escaping (Double) -> Void
+) -> DialResolvedSlider {
+    DialResolvedSlider(range: range, step: step, unit: unit, get: get, set: set)
+}
+
+private func copyTextToPasteboard(_ text: String) {
+    #if canImport(UIKit)
+    UIPasteboard.general.string = text
+    #endif
+}
+
+private extension Double {
+    func formatted(step: Double) -> String {
+        dialFormattedNumber(self, step: step)
+    }
+}
+
+package func dialHexUsesExplicitAlpha(_ hex: String) -> Bool {
+    let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
+    return cleaned.count == 8
+}
+
+package func dialColor(from hex: String) -> Color? {
+    let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
+    let length = cleaned.count
+
+    guard length == 3 || length == 6 || length == 8 else {
+        return nil
+    }
+
+    let expanded: String
+    if length == 3 {
+        expanded = cleaned.map { "\($0)\($0)" }.joined()
+    } else {
+        expanded = cleaned
+    }
+
+    var hexValue: UInt64 = 0
+    guard Scanner(string: expanded).scanHexInt64(&hexValue) else {
+        return nil
+    }
+
+    let red, green, blue, alpha: Double
+    switch expanded.count {
+    case 6:
+        red = Double((hexValue >> 16) & 0xFF) / 255
+        green = Double((hexValue >> 8) & 0xFF) / 255
+        blue = Double(hexValue & 0xFF) / 255
+        alpha = 1
+    case 8:
+        red = Double((hexValue >> 24) & 0xFF) / 255
+        green = Double((hexValue >> 16) & 0xFF) / 255
+        blue = Double((hexValue >> 8) & 0xFF) / 255
+        alpha = Double(hexValue & 0xFF) / 255
+    default:
+        return nil
+    }
+
+    return Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
+}
+
+package func dialHexString(from color: Color, prefersAlphaOutput: Bool = false) -> String? {
+    #if canImport(UIKit)
+    let uiColor = UIColor(color)
+    var red: CGFloat = 0
+    var green: CGFloat = 0
+    var blue: CGFloat = 0
+    var alpha: CGFloat = 0
+
+    guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+        return nil
+    }
+
+    let redValue = Int(round(red * 255))
+    let greenValue = Int(round(green * 255))
+    let blueValue = Int(round(blue * 255))
+    let alphaValue = Int(round(alpha * 255))
+
+    if prefersAlphaOutput || alphaValue < 255 {
+        return String(format: "#%02X%02X%02X%02X", redValue, greenValue, blueValue, alphaValue)
+    }
+
+    return String(format: "#%02X%02X%02X", redValue, greenValue, blueValue)
+    #elseif canImport(AppKit)
+    guard let nsColor = NSColor(color).usingColorSpace(.sRGB) else {
+        return nil
+    }
+
+    let redValue = Int(round(nsColor.redComponent * 255))
+    let greenValue = Int(round(nsColor.greenComponent * 255))
+    let blueValue = Int(round(nsColor.blueComponent * 255))
+    let alphaValue = Int(round(nsColor.alphaComponent * 255))
+
+    if prefersAlphaOutput || alphaValue < 255 {
+        return String(format: "#%02X%02X%02X%02X", redValue, greenValue, blueValue, alphaValue)
+    }
+
+    return String(format: "#%02X%02X%02X", redValue, greenValue, blueValue)
+    #else
+    return nil
+    #endif
+}

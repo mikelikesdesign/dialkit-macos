@@ -1,0 +1,323 @@
+import XCTest
+import DialKitProtocol
+@testable import DialKitCore
+
+@MainActor
+final class DialKitCoreTests: XCTestCase {
+    struct DemoModel: Codable, Equatable {
+        var opacity: Double = 0.5
+        var enabled = true
+        var title = "Hello"
+        var accent = "#FF0000"
+        var variant = "primary"
+        var spring: DialSpring = .default
+        var transition: DialTransition = .default
+    }
+
+    override func setUp() {
+        super.setUp()
+        DialStore.shared.resetForTesting()
+    }
+
+    func testPanelRegisterAndUnregisterTracksStore() {
+        weak var weakState: DialPanelState<DemoModel>?
+
+        do {
+            var state: DialPanelState<DemoModel>? = makeState()
+            weakState = state
+
+            XCTAssertEqual(DialStore.shared.panels.map(\.id), [state?.id].compactMap { $0 })
+
+            state = nil
+        }
+
+        XCTAssertNil(weakState)
+        XCTAssertTrue(DialStore.shared.panels.isEmpty)
+    }
+
+    func testResolvedControlMetadataIncludesNestedChildren() {
+        let state = makeState()
+        let resolved = state.resolvedControls()
+
+        XCTAssertEqual(resolved.map(\.path), ["opacity", "enabled", "title", "accent", "variant", "motion"])
+
+        guard case let .group(group) = resolved.last?.kind else {
+            XCTFail("Expected motion group")
+            return
+        }
+
+        XCTAssertEqual(group.children.map(\.path), ["motion.spring", "motion.transition", "motion.reset"])
+    }
+
+    func testConfigurePreservesCompatibleValuesAndClampsInvalidOnes() {
+        let state = makeState()
+        state.values.opacity = 0.86
+        state.values.enabled = false
+        state.values.title = "Updated"
+        state.values.accent = "oops"
+        state.values.variant = "secondary"
+
+        state.configure(
+            initial: DemoModel(opacity: 0.2, enabled: true, title: "Base", accent: "#00FF00", variant: "primary"),
+            controls: [
+                .slider("opacity", keyPath: \.opacity, range: 0.0...0.5, step: 0.1),
+                .toggle("enabled", keyPath: \.enabled),
+                .text("title", keyPath: \.title),
+                .color("accent", keyPath: \.accent),
+                .select("variant", keyPath: \.variant, options: ["primary"]),
+                .group(
+                    "motion",
+                    children: [
+                        .spring("spring", keyPath: \.spring),
+                        .transition("transition", keyPath: \.transition),
+                        .action("reset")
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertEqual(state.values.opacity, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(state.values.enabled, false)
+        XCTAssertEqual(state.values.title, "Updated")
+        XCTAssertEqual(state.values.accent, "#00FF00")
+        XCTAssertEqual(state.values.variant, "primary")
+    }
+
+    func testPresetLifecycleAndBaseRestore() throws {
+        let state = makeState()
+        state.values.opacity = 0.8
+
+        state.savePreset(named: "Hero")
+        let firstPresetID = try XCTUnwrap(state.activePresetID)
+
+        state.values.opacity = 0.3
+        XCTAssertEqual(try XCTUnwrap(state.presets.first?.values.opacity), 0.3, accuracy: 0.0001)
+
+        state.clearActivePreset()
+        XCTAssertNil(state.activePresetID)
+        XCTAssertEqual(state.values.opacity, 0.8, accuracy: 0.0001)
+
+        state.loadPreset(id: firstPresetID)
+        XCTAssertEqual(state.values.opacity, 0.3, accuracy: 0.0001)
+
+        state.deletePreset(id: firstPresetID)
+        XCTAssertTrue(state.presets.isEmpty)
+        XCTAssertNil(state.activePresetID)
+        XCTAssertEqual(state.values.opacity, 0.8, accuracy: 0.0001)
+
+        state.values.opacity = 0.6
+        state.savePreset(named: "Hero")
+        let activePresetID = try XCTUnwrap(state.activePresetID)
+        state.values.opacity = 0.4
+
+        state.clearActivePreset()
+        state.values.opacity = 0.9
+        state.savePreset(named: "Secondary")
+        let secondaryPresetID = try XCTUnwrap(state.activePresetID)
+        state.values.opacity = 0.2
+
+        state.loadPreset(id: activePresetID)
+        XCTAssertEqual(state.values.opacity, 0.4, accuracy: 0.0001)
+
+        state.deletePreset(id: secondaryPresetID)
+        XCTAssertEqual(state.activePresetID, activePresetID)
+        XCTAssertEqual(state.values.opacity, 0.4, accuracy: 0.0001)
+        XCTAssertEqual(state.presets.map(\.id), [activePresetID])
+    }
+
+    func testTransitionModeSwitchingProducesExpectedShapes() {
+        let easing = DialTransition.spring(.time(duration: 0.45, bounce: 0.3)).switching(to: .easing)
+        guard case let .easing(duration, bezier) = easing else {
+            return XCTFail("Expected easing transition")
+        }
+        XCTAssertEqual(duration, 0.45, accuracy: 0.0001)
+        XCTAssertEqual(bezier, .standard)
+
+        let advanced = easing.switching(to: .advanced)
+        guard case let .spring(spring) = advanced,
+              case let .physics(stiffness, damping, mass) = spring else {
+            return XCTFail("Expected advanced spring transition")
+        }
+        XCTAssertEqual(stiffness, 200, accuracy: 0.0001)
+        XCTAssertEqual(damping, 25, accuracy: 0.0001)
+        XCTAssertEqual(mass, 1, accuracy: 0.0001)
+    }
+
+    func testActionCallbacksUseStableNestedPaths() {
+        var triggered: [String] = []
+        let state = DialPanelState(
+            name: "Preview",
+            initial: DemoModel(),
+            controls: DemoModel.controls,
+            onAction: { triggered.append($0) }
+        )
+
+        let resolved = state.resolvedControls()
+        guard case let .group(group) = resolved.last?.kind,
+              case let .action(action) = group.children.last?.kind else {
+            return XCTFail("Expected nested action")
+        }
+
+        action.trigger()
+        XCTAssertEqual(triggered, ["motion.reset"])
+    }
+
+    func testConfigureChangingGroupCollapsedStateChangesResolvedIdentity() {
+        let state = makeState()
+        let initialID = state.resolvedControls().last?.id
+
+        state.configure(
+            controls: [
+                .slider("opacity", keyPath: \.opacity, range: 0.0...1.0, step: 0.1),
+                .toggle("enabled", keyPath: \.enabled),
+                .text("title", keyPath: \.title, placeholder: "Title"),
+                .color("accent", keyPath: \.accent),
+                .select("variant", keyPath: \.variant, options: ["primary", "secondary"]),
+                .group(
+                    "motion",
+                    collapsed: true,
+                    children: [
+                        .spring("spring", keyPath: \.spring),
+                        .transition("transition", keyPath: \.transition),
+                        .action("reset")
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertNotEqual(initialID, state.resolvedControls().last?.id)
+    }
+
+    func testAccordionStateSeedsFromDefaultAndRemembersUserChoice() {
+        let panel = AnyDialPanelBox(id: UUID())
+
+        XCTAssertFalse(panel.accordionExpanded(for: "motion|group|true", default: false))
+        XCTAssertFalse(panel.accordionExpanded(for: "motion|group|true", default: true))
+
+        panel.setAccordionExpanded(true, for: "motion|group|true")
+
+        XCTAssertTrue(panel.accordionExpanded(for: "motion|group|true", default: false))
+    }
+
+    func testAccordionStatePrunesStaleIDs() {
+        let panel = AnyDialPanelBox(id: UUID())
+
+        XCTAssertFalse(panel.accordionExpanded(for: "motion|group|false", default: false))
+        XCTAssertTrue(panel.accordionExpanded(for: "spring", default: true))
+
+        panel.pruneAccordionExpanded(validIDs: Set(["spring"]))
+
+        XCTAssertTrue(panel.accordionExpanded(for: "motion|group|false", default: true))
+        XCTAssertTrue(panel.accordionExpanded(for: "spring", default: false))
+    }
+
+    func testCopyInstructionIncludesPromptAndJson() {
+        let state = makeState()
+        let text = state.copyInstructionText()
+
+        XCTAssertTrue(text.contains("Update the DialKit configuration for \"Preview\""))
+        XCTAssertTrue(text.contains("```json"))
+        XCTAssertTrue(text.contains("\"title\""))
+        XCTAssertTrue(text.contains("Apply these values as the new defaults"))
+    }
+
+    func testDialStepPrecisionSupportsFineGrainedSteps() {
+        XCTAssertEqual(dialStepPrecision(1), 0)
+        XCTAssertEqual(dialStepPrecision(0.1), 1)
+        XCTAssertEqual(dialStepPrecision(0.005), 3)
+        XCTAssertEqual(dialStepPrecision(0.000001), 6)
+        XCTAssertEqual(dialFormattedNumber(0.125, step: 0.005), "0.125")
+    }
+
+    func testRemoteSnapshotIncludesCurrentControlValues() throws {
+        let state = makeState()
+        state.values.opacity = 0.7
+        state.values.title = "Remote"
+
+        let snapshot = DialStore.shared.remoteSnapshot(appName: "Demo App")
+
+        XCTAssertEqual(snapshot.appName, "Demo App")
+        let panel = try XCTUnwrap(snapshot.panels.first)
+        XCTAssertEqual(panel.id, state.id)
+        XCTAssertEqual(panel.name, "Preview")
+
+        guard case let .slider(value, lowerBound, upperBound, step, unit) = panel.controls.first?.kind else {
+            return XCTFail("Expected first control to be a slider")
+        }
+
+        XCTAssertEqual(value, 0.7, accuracy: 0.0001)
+        XCTAssertEqual(lowerBound, 0)
+        XCTAssertEqual(upperBound, 1)
+        XCTAssertEqual(step, 0.1)
+        XCTAssertNil(unit)
+
+        guard case let .text(title, placeholder) = panel.controls[2].kind else {
+            return XCTFail("Expected title control")
+        }
+
+        XCTAssertEqual(title, "Remote")
+        XCTAssertEqual(placeholder, "Title")
+    }
+
+    func testRemoteControlUpdatesMutateBackingPanelState() {
+        let state = makeState()
+
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "opacity", value: .number(0.86)))
+        XCTAssertEqual(state.values.opacity, 0.9, accuracy: 0.0001)
+
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "enabled", value: .bool(false)))
+        XCTAssertFalse(state.values.enabled)
+
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "title", value: .string("Updated")))
+        XCTAssertEqual(state.values.title, "Updated")
+
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "accent", value: .string("#00FFAA")))
+        XCTAssertEqual(state.values.accent, "#00FFAA")
+
+        XCTAssertFalse(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "accent", value: .string("green")))
+        XCTAssertEqual(state.values.accent, "#00FFAA")
+
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "variant", value: .string("secondary")))
+        XCTAssertEqual(state.values.variant, "secondary")
+
+        XCTAssertFalse(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "variant", value: .string("missing")))
+        XCTAssertEqual(state.values.variant, "secondary")
+    }
+
+    func testRemoteActionsUseResolvedNestedPaths() {
+        var triggered: [String] = []
+        let state = DialPanelState(
+            name: "Preview",
+            initial: DemoModel(),
+            controls: DemoModel.controls,
+            onAction: { triggered.append($0) }
+        )
+
+        XCTAssertTrue(DialStore.shared.triggerRemoteAction(panelID: state.id, path: "motion.reset"))
+        XCTAssertEqual(triggered, ["motion.reset"])
+    }
+
+    private func makeState() -> DialPanelState<DemoModel> {
+        DialPanelState(name: "Preview", initial: DemoModel(), controls: DemoModel.controls)
+    }
+}
+
+private extension DialKitCoreTests.DemoModel {
+    static var controls: [DialControl<Self>] {
+        [
+            .slider("opacity", keyPath: \.opacity, range: 0.0...1.0, step: 0.1),
+            .toggle("enabled", keyPath: \.enabled),
+            .text("title", keyPath: \.title, placeholder: "Title"),
+            .color("accent", keyPath: \.accent),
+            .select("variant", keyPath: \.variant, options: ["primary", "secondary"]),
+            .group(
+                "motion",
+                children: [
+                    .spring("spring", keyPath: \.spring),
+                    .transition("transition", keyPath: \.transition),
+                    .action("reset")
+                ]
+            )
+        ]
+    }
+}
