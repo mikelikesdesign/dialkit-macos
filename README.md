@@ -110,12 +110,6 @@ Current transport:
 - this is intended first for iOS Simulator and local macOS app tuning
 - physical-device discovery is not implemented yet
 
-## In-App DialKit Reference
-
-DialKit is a SwiftUI package for editing and previewing interface updates live.
-
-![DialKit demo](media/dialkit.gif)
-
 ## Credit
 
 This Swift package is based on the original [DialKit repository](https://github.com/joshpuckett/dialkit) by [Josh Puckett](https://github.com/joshpuckett).
