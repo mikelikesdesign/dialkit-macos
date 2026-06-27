@@ -79,7 +79,7 @@ private enum DialKitCLI {
         let appName = options.appName ?? options.targetName
 
         print("""
-        DialKit package-only install preflight passed.
+        DialKit macOS package-only install preflight passed.
 
         Project: \(options.projectPath)
         Target: \(options.targetName)
@@ -87,12 +87,12 @@ private enum DialKitCLI {
         Xcode setup:
         1. Add this repository as a Swift Package dependency.
         2. Link these package products to the \(options.targetName) app target:
-           - DialKit
-           - DialKitAgent
+           - DialkitmacOS
+           - DialkitmacOSAgent
         3. Start the agent only in debug builds:
 
         #if DEBUG
-        import DialKitAgent
+        import DialkitmacOSAgent
         #endif
 
         @main
@@ -141,7 +141,7 @@ private enum DialKitCLI {
     }
 
     private static let help = """
-    DialKit command line helper
+    DialKit macOS command line helper
 
     Usage:
       swift run dialkit run

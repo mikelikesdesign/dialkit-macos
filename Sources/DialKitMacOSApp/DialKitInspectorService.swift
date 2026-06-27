@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 import Network
-import DialKitProtocol
+import DialkitmacOSProtocol
 
 @MainActor
 final class DialKitInspectorService: ObservableObject {

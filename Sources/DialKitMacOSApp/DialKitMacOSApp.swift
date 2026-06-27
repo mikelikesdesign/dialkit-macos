@@ -1,5 +1,5 @@
 import SwiftUI
-import DialKitProtocol
+import DialkitmacOSProtocol
 #if canImport(AppKit)
 import AppKit
 #endif

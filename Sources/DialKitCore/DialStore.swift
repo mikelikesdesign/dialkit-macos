@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-import DialKitProtocol
+import DialkitmacOSProtocol
 
 package final class AnyDialPanelBox: ObservableObject, Identifiable {
     package let id: UUID

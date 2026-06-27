@@ -2,71 +2,80 @@
 import PackageDescription
 
 let package = Package(
-    name: "DialKitMacOS",
+    name: "DialkitmacOS",
     platforms: [
         .iOS(.v17),
         .macOS(.v14)
     ],
     products: [
         .library(
-            name: "DialKit",
-            targets: ["DialKit"]
+            name: "DialkitmacOS",
+            targets: ["DialkitmacOS"]
         ),
         .library(
-            name: "DialKitAgent",
-            targets: ["DialKitAgent"]
+            name: "DialkitmacOSAgent",
+            targets: ["DialkitmacOSAgent"]
         ),
         .library(
-            name: "DialKitCore",
-            targets: ["DialKitCore"]
+            name: "DialkitmacOSCore",
+            targets: ["DialkitmacOSCore"]
         ),
         .library(
-            name: "DialKitProtocol",
-            targets: ["DialKitProtocol"]
+            name: "DialkitmacOSProtocol",
+            targets: ["DialkitmacOSProtocol"]
         ),
         .executable(
             name: "dialkit-macos",
-            targets: ["DialKitMacOSApp"]
+            targets: ["DialkitmacOSApp"]
         ),
         .executable(
             name: "dialkit",
-            targets: ["DialKitCLI"]
+            targets: ["DialkitmacOSCLI"]
         )
     ],
     targets: [
         .target(
-            name: "DialKitProtocol"
+            name: "DialkitmacOSProtocol",
+            path: "Sources/DialKitProtocol"
         ),
         .target(
-            name: "DialKitCore",
-            dependencies: ["DialKitProtocol"]
+            name: "DialkitmacOSCore",
+            dependencies: ["DialkitmacOSProtocol"],
+            path: "Sources/DialKitCore"
         ),
         .target(
-            name: "DialKit",
-            dependencies: ["DialKitCore"]
+            name: "DialkitmacOS",
+            dependencies: ["DialkitmacOSCore"],
+            path: "Sources/DialKit"
         ),
         .target(
-            name: "DialKitAgent",
-            dependencies: ["DialKitCore", "DialKitProtocol"]
+            name: "DialkitmacOSAgent",
+            dependencies: ["DialkitmacOSCore", "DialkitmacOSProtocol"],
+            path: "Sources/DialKitAgent"
         ),
         .executableTarget(
-            name: "DialKitMacOSApp",
-            dependencies: ["DialKitProtocol"]
+            name: "DialkitmacOSApp",
+            dependencies: ["DialkitmacOSProtocol"],
+            path: "Sources/DialKitMacOSApp"
         ),
         .executableTarget(
-            name: "DialKitCLI"
+            name: "DialkitmacOSCLI",
+            path: "Sources/DialKitCLI"
         ),
         .testTarget(
-            name: "DialKitProtocolTests",
-            dependencies: ["DialKitProtocol"]
+            name: "DialkitmacOSProtocolTests",
+            dependencies: ["DialkitmacOSProtocol"],
+            path: "Tests/DialKitProtocolTests"
         ),
         .testTarget(
-            name: "DialKitCoreTests",
-            dependencies: ["DialKitCore"]
+            name: "DialkitmacOSCoreTests",
+            dependencies: ["DialkitmacOSCore"],
+            path: "Tests/DialKitCoreTests"
         ),
         .testTarget(
-            name: "DialKitTests",
-            dependencies: ["DialKit"]
+            name: "DialkitmacOSTests",
+            dependencies: ["DialkitmacOS"],
+            path: "Tests/DialKitTests"
         )
     ]
 )

@@ -1,6 +1,6 @@
 import XCTest
-import DialKitProtocol
-@testable import DialKitCore
+import DialkitmacOSProtocol
+@testable import DialkitmacOSCore
 
 @MainActor
 final class DialKitCoreTests: XCTestCase {

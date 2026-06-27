@@ -1,1 +1,1 @@
-@_exported import DialKitCore
+@_exported import DialkitmacOSCore

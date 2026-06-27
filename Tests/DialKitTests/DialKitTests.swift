@@ -1,6 +1,6 @@
 import SwiftUI
 import XCTest
-@testable import DialKit
+@testable import DialkitmacOS
 #if canImport(UIKit)
 import UIKit
 #endif

@@ -1,5 +1,5 @@
 import XCTest
-@testable import DialKitProtocol
+@testable import DialkitmacOSProtocol
 
 final class DialKitProtocolTests: XCTestCase {
     func testWireCodecDecodesCompleteLinesAndKeepsPartialMessageBuffered() throws {

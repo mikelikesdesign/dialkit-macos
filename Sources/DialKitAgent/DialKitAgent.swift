@@ -1,8 +1,8 @@
 import Combine
 import Foundation
 import Network
-import DialKitCore
-import DialKitProtocol
+import DialkitmacOSCore
+import DialkitmacOSProtocol
 
 @MainActor
 public final class DialKitAgent {

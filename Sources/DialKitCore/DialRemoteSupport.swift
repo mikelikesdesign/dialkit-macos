@@ -1,5 +1,5 @@
 import Foundation
-import DialKitProtocol
+import DialkitmacOSProtocol
 
 package extension AnyDialPanelBox {
     var remoteSnapshot: DialKitPanelSnapshot {
