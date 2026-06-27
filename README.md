@@ -6,6 +6,16 @@ This package is separate from [`dialkit-ios`](https://github.com/mikelikesdesign
 
 There is no app download to install. Add this repository as a Swift Package dependency, link the debug agent into the app you are tuning, then run the inspector from this package checkout with SwiftPM.
 
+## App Compatibility
+
+DialKit macOS works with SwiftUI apps, UIKit apps, mixed UIKit/SwiftUI apps, iOS Simulator apps, Xcode Previews, and local macOS apps.
+
+It does not attach to an arbitrary app with no code changes. The app must link this package, start `DialKitAgent` in debug builds, and expose tunable values through `DialPanelState`.
+
+UIKit apps do not need to mount SwiftUI control UI. Keep `DialPanelState` in a view controller, model object, or coordinator, then observe `dial.$values` and apply changes to UIKit views.
+
+Pure Objective-C apps need a small Swift bridge because the package API is Swift.
+
 ## Install
 
 Add this repository as a Swift Package dependency in Xcode:
@@ -100,6 +110,49 @@ struct CardPreview: View {
 ```
 
 When the app or preview is running, the agent publishes active panels to the Mac inspector. Edits in the inspector update `dial.values` in the running app.
+
+For UIKit, hold the panel state from a long-lived object and apply `values` updates to UIKit directly:
+
+```swift
+import Combine
+import DialkitmacOS
+import UIKit
+
+struct CardModel: Codable, Equatable {
+    var title = "Card"
+    var cornerRadius = 24.0
+    var opacity = 1.0
+}
+
+final class CardViewController: UIViewController {
+    private var cancellables: Set<AnyCancellable> = []
+
+    private let dial = DialPanelState(
+        name: "Card",
+        initial: CardModel(),
+        controls: [
+            .text("title", keyPath: \.title),
+            .slider("cornerRadius", keyPath: \.cornerRadius, range: 0...48, step: 1),
+            .slider("opacity", keyPath: \.opacity, range: 0...1, step: 0.05)
+        ]
+    )
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        dial.$values
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] values in
+                self?.apply(values)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func apply(_ values: CardModel) {
+        // Update labels, layers, constraints, or any other UIKit state.
+    }
+}
+```
 
 ## Run The Inspector
 
@@ -243,7 +296,8 @@ When no preset is selected, edits update the base values. When a preset is activ
 - macOS 14 or later for local package builds, tests, and the inspector
 - iOS 17 or later for iOS Simulator apps using the debug agent
 - Swift 5.10 or later
-- SwiftUI
+- Swift app code, or a Swift bridge for Objective-C apps
+- SwiftUI or UIKit app UI
 - Tuned model types must conform to `Codable` and `Equatable`
 
 ## Current Limits
