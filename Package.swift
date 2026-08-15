@@ -13,6 +13,10 @@ let package = Package(
             targets: ["DialkitmacOS"]
         ),
         .library(
+            name: "DialkitmacOSInAppUI",
+            targets: ["DialkitmacOSInAppUI"]
+        ),
+        .library(
             name: "DialkitmacOSAgent",
             targets: ["DialkitmacOSAgent"]
         ),
@@ -49,6 +53,11 @@ let package = Package(
             path: "Sources/DialKit"
         ),
         .target(
+            name: "DialkitmacOSInAppUI",
+            dependencies: ["DialkitmacOS"],
+            path: "Sources/DialKitInAppUI"
+        ),
+        .target(
             name: "DialkitmacOSAgent",
             dependencies: ["DialkitmacOSCore", "DialkitmacOSProtocol"],
             path: "Sources/DialKitAgent"
@@ -73,9 +82,9 @@ let package = Package(
             path: "Tests/DialKitCoreTests"
         ),
         .testTarget(
-            name: "DialkitmacOSTests",
-            dependencies: ["DialkitmacOS"],
-            path: "Tests/DialKitTests"
+            name: "DialkitmacOSInAppUITests",
+            dependencies: ["DialkitmacOSInAppUI"],
+            path: "Tests/DialKitInAppUITests"
         )
     ]
 )

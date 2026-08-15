@@ -1,6 +1,6 @@
 import Combine
 import SwiftUI
-import DialkitmacOSCore
+import DialkitmacOS
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)

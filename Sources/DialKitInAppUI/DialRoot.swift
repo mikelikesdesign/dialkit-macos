@@ -1,5 +1,5 @@
 import SwiftUI
-@_exported import DialkitmacOSCore
+@_exported import DialkitmacOS
 
 public enum DialPosition: String, CaseIterable {
     case topRight

@@ -197,6 +197,8 @@ Today this command does not mutate the Xcode project. The next step is automatic
 
 The package also exposes lower-level support products for internal integration and tests: `DialkitmacOSCore` and `DialkitmacOSProtocol`.
 
+The legacy in-app drawer is isolated in the opt-in `DialkitmacOSInAppUI` product. It is not compiled when an app links the documented `DialkitmacOS` and `DialkitmacOSAgent` products. Existing integrations that still need it can link that product and `import DialkitmacOSInAppUI`; new in-app drawer integrations should use [`dialkit-ios`](https://github.com/mikelikesdesign/dialkit-ios).
+
 ## Controls
 
 Controls are defined with writable key paths into a `Codable & Equatable` model:

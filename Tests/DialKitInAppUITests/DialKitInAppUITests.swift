@@ -1,12 +1,12 @@
 import SwiftUI
 import XCTest
-@testable import DialkitmacOS
+@testable import DialkitmacOSInAppUI
 #if canImport(UIKit)
 import UIKit
 #endif
 
 @MainActor
-final class DialKitTests: XCTestCase {
+final class DialKitInAppUITests: XCTestCase {
     func testDialRootCompilesInBothModes() {
         let isPresented = Binding.constant(false)
 
@@ -32,7 +32,7 @@ final class DialKitTests: XCTestCase {
         _ = root.body
     }
 
-    func testReadmeStyleSampleCompiles() {
+    func testInAppDrawerSampleCompiles() {
         struct CardModel: Codable, Equatable {
             var title = "Card"
             var cornerRadius = 24.0
@@ -74,7 +74,7 @@ final class DialKitTests: XCTestCase {
         _ = view
     }
 
-    func testReadmeHostControlledSampleCompiles() {
+    func testHostControlledInAppDrawerSampleCompiles() {
         struct CardModel: Codable, Equatable {
             var title = "Card"
             var cornerRadius = 24.0
