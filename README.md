@@ -438,16 +438,3 @@ lsof -nP -iTCP:44777 -sTCP:LISTEN
 - `dialkit` – small helper CLI
 
 Lower-level products (`DialkitmacOSCore`, `DialkitmacOSProtocol`) exist for internal use and tests. The legacy in-app drawer lives in the opt-in `DialkitmacOSInAppUI` product; new in-app integrations should use [dialkit-ios](https://github.com/mikelikesdesign/dialkit-ios) instead.
-
-## Contributing
-
-Issues and pull requests are welcome. Include your macOS/Xcode versions, whether you used the Simulator, a Preview, or a local Mac app, the inspector status, and a small reproduction when reporting a problem.
-
-From the repository root, build and run the package tests on macOS:
-
-```sh
-swift build
-swift test
-```
-
-Use the demo app to check live editing in the Simulator or Xcode Previews after integration or inspector changes.
