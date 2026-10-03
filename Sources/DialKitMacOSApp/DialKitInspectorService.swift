@@ -87,13 +87,13 @@ final class DialKitInspectorService: ObservableObject {
             status = "Starting listener"
 
             listener.newConnectionHandler = { [weak self] connection in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     self?.accept(connection)
                 }
             }
 
             listener.stateUpdateHandler = { [weak self] state in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     self?.handleListenerState(state)
                 }
             }
@@ -145,7 +145,7 @@ final class DialKitInspectorService: ObservableObject {
         }
 
         newConnection.stateUpdateHandler = { [weak self, weak newConnection] state in
-            Task { @MainActor in
+            Task { @MainActor [weak self, weak newConnection] in
                 guard let newConnection else { return }
                 self?.handleConnectionState(state, connection: newConnection)
             }
@@ -183,7 +183,7 @@ final class DialKitInspectorService: ObservableObject {
 
     private func receive(on connection: NWConnection) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.handleReceive(data: data, isComplete: isComplete, error: error, connection: connection)
             }
         }

@@ -91,7 +91,7 @@ public final class DialKitAgent {
         self.connection = connection
 
         connection.stateUpdateHandler = { [weak self, weak connection] state in
-            Task { @MainActor in
+            Task { @MainActor [weak self, weak connection] in
                 guard let connection else { return }
                 self?.handleStateUpdate(state, connection: connection)
             }
@@ -120,7 +120,7 @@ public final class DialKitAgent {
 
     private func receive(on connection: NWConnection) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.handleReceive(data: data, isComplete: isComplete, error: error, connection: connection)
             }
         }
@@ -223,7 +223,7 @@ public final class DialKitAgent {
 
         reconnectWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.connect()
             }
         }
