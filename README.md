@@ -2,7 +2,7 @@
 
 Dialkit macOS is a Mac app for tuning your iOS interface live. Your app runs in the iOS Simulator or an Xcode Preview, the inspector runs on your Mac, and every slider, color, and spring you interact with updates the app in real time.
 
-> **Beta:** This repository is currently a work in progress. APIs and behavior may change as development continues.
+> **Beta:** This repository is currently a work in progress.
 
 ![Dialkit macOS inspector alongside an iOS app in Xcode Preview](media/dialkit-macos.png)
 
