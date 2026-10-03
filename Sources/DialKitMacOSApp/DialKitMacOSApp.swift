@@ -17,6 +17,9 @@ struct DialKitMacOSApp: App {
                 .environmentObject(service)
                 .frame(minWidth: 320, minHeight: 420)
                 .background(DialTheme.panelBackground)
+                .toolbarBackground(DialTheme.panelBackground, for: .windowToolbar)
+                .toolbarBackground(.visible, for: .windowToolbar)
+                .preferredColorScheme(.dark)
         }
         .defaultSize(width: 390, height: 720)
     }
@@ -25,6 +28,18 @@ struct DialKitMacOSApp: App {
 #if canImport(AppKit)
 private final class DialKitAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Copies in Downloads and the build folder share a bundle identifier.
+        // Reuse the oldest inspector instead of opening a second dead window.
+        if let bundleID = Bundle.main.bundleIdentifier,
+           let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .filter({ $0.processIdentifier != ProcessInfo.processInfo.processIdentifier && !$0.isTerminated })
+            .min(by: { $0.processIdentifier < $1.processIdentifier }),
+           existing.processIdentifier < ProcessInfo.processInfo.processIdentifier {
+            existing.activate(options: [.activateAllWindows])
+            NSApp.terminate(nil)
+            return
+        }
+
         if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -74,6 +89,12 @@ private struct InspectorView: View {
                 emptyState
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            connectionFooter
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
+                .background(DialTheme.panelBackground)
+        }
         .onChange(of: service.snapshot?.panels.map(\.id) ?? []) { _, panelIDs in
             guard !panelIDs.isEmpty else {
                 selectedPanelID = nil
@@ -96,11 +117,13 @@ private struct InspectorView: View {
                 .frame(width: 56, height: 56)
                 .background(DialRowBackground(cornerRadius: 16))
 
-            Text("No App Connected")
+            Text(service.snapshot == nil ? "No App Connected" : "No Panels Available")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(DialTheme.textRoot)
 
-            Text("Run an app or Preview that starts DialKitAgent.")
+            Text(service.snapshot == nil
+                 ? "Run an app or Preview that starts DialKitAgent."
+                 : "Open a view that contains a DialPanelState.")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(DialTheme.textMuted)
                 .multilineTextAlignment(.center)
@@ -123,9 +146,6 @@ private struct InspectorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
-        .overlay(alignment: .bottom) {
-            connectionFooter
-        }
     }
 
     private var connectionFooter: some View {
@@ -172,6 +192,7 @@ private struct StandalonePanelInspectorView: View {
                 .padding(.bottom, 8)
 
             PanelControlsView(panel: panel)
+                .id(panel.id)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background {
@@ -234,7 +255,6 @@ private struct PanelControlsView: View {
 
     @State private var copiedState = false
     @State private var expandedGroups: [String: Bool] = [:]
-    @State private var measuredControlsContentHeight: CGFloat = 0
 
     var body: some View {
         let accordionIDs = accordionIDs(in: panel.controls)
@@ -244,21 +264,7 @@ private struct PanelControlsView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
 
-            controlsContent(measurement: false)
-                .frame(
-                    height: measuredControlsContentHeight > 0 ? measuredControlsContentHeight : nil,
-                    alignment: .top
-                )
-                .background {
-                    controlsMeasurementView
-                }
-        }
-        .onPreferenceChange(DialMeasuredHeightKey.self) { newHeight in
-            guard abs(measuredControlsContentHeight - newHeight) > 0.5 else {
-                return
-            }
-
-            measuredControlsContentHeight = newHeight
+            controlsContent
         }
         .onAppear {
             expandedGroups = expandedGroups.filter { accordionIDs.contains($0.key) }
@@ -268,29 +274,15 @@ private struct PanelControlsView: View {
         }
     }
 
-    private func controlsContent(measurement: Bool) -> some View {
+    private var controlsContent: some View {
         VStack(spacing: 6) {
-            controlList(panel.controls, measurement: measurement)
+            controlList(panel.controls)
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
     }
 
-    private var controlsMeasurementView: some View {
-        controlsContent(measurement: true)
-            .fixedSize(horizontal: false, vertical: true)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear
-                        .preference(key: DialMeasuredHeightKey.self, value: proxy.size.height)
-                }
-            }
-            .hidden()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-
-    private func controlList(_ controls: [DialKitControlSnapshot], measurement: Bool) -> some View {
+    private func controlList(_ controls: [DialKitControlSnapshot]) -> some View {
         ForEach(Array(controls.enumerated()), id: \.element.id) { index, control in
             ControlInspectorView(
                 panelID: panel.id,
@@ -415,14 +407,6 @@ private struct PanelControlsView: View {
 private struct DialSectionDividerVisibility: Equatable {
     let showsTopDivider: Bool
     let showsBottomDivider: Bool
-}
-
-private struct DialMeasuredHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
 }
 
 private func controlUsesSectionDivider(_ control: DialKitControlSnapshot) -> Bool {
@@ -554,7 +538,6 @@ private struct DialFolderSection<Content: View>: View {
     let showsBottomDivider: Bool
     let content: Content
 
-    @State private var measuredContentHeight: CGFloat?
 
     init(
         title: String,
@@ -594,30 +577,13 @@ private struct DialFolderSection<Content: View>: View {
             }
             .buttonStyle(.plain)
 
-            VStack(spacing: 6) {
-                content
-            }
-            .padding(.bottom, 10)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear
-                        .preference(key: DialFolderContentHeightKey.self, value: proxy.size.height)
+            if isExpanded {
+                VStack(spacing: 6) {
+                    content
                 }
+                .padding(.bottom, 10)
+                .transition(.opacity)
             }
-            .frame(height: isExpanded ? measuredContentHeight : 0, alignment: .top)
-            .clipped()
-            .opacity(isExpanded ? 1 : 0)
-            .allowsHitTesting(isExpanded)
-            .accessibilityHidden(!isExpanded)
-            .animation(dialFolderContentAnimation, value: isExpanded)
-            .animation(dialFolderContentAnimation, value: measuredContentHeight)
-        }
-        .onPreferenceChange(DialFolderContentHeightKey.self) { newHeight in
-            guard abs((measuredContentHeight ?? 0) - newHeight) > 0.5 else {
-                return
-            }
-
-            measuredContentHeight = newHeight
         }
         .overlay(alignment: .top) {
             if showsTopDivider {
@@ -634,14 +600,6 @@ private struct DialFolderSection<Content: View>: View {
             }
         }
         .padding(.vertical, 4)
-    }
-}
-
-private struct DialFolderContentHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
     }
 }
 
@@ -983,14 +941,15 @@ private struct DialSliderRow: View {
     let unit: String?
     let onChange: (Double) -> Void
 
-    @State private var isInteracting = false
-    @State private var interactionStartValue: Double?
+    @State private var interaction = DialSliderEditingState()
     @State private var draftValue = ""
     @State private var isValueEditing = false
 
+    private var displayedValue: Double { interaction.displayedValue(remote: value) }
+
     private var progress: CGFloat {
         guard range.upperBound > range.lowerBound else { return 0 }
-        return CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+        return CGFloat((displayedValue - range.lowerBound) / (range.upperBound - range.lowerBound))
     }
 
     var body: some View {
@@ -1003,7 +962,7 @@ private struct DialSliderRow: View {
                 HStack(spacing: 0) {
                     ForEach(0..<11, id: \.self) { _ in
                         Capsule()
-                            .fill(Color.white.opacity(isInteracting ? 0.15 : 0))
+                            .fill(Color.white.opacity(interaction.isDragging ? 0.15 : 0))
                             .frame(width: 1, height: 8)
                             .frame(maxWidth: .infinity)
                     }
@@ -1011,7 +970,7 @@ private struct DialSliderRow: View {
                 .padding(.horizontal, 8)
 
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(isInteracting ? 0.14 : 0.10))
+                    .fill(Color.white.opacity(interaction.isDragging ? 0.14 : 0.10))
                     .frame(width: width * max(0, min(progress, 1)))
 
                 RoundedRectangle(cornerRadius: 99, style: .continuous)
@@ -1026,6 +985,7 @@ private struct DialSliderRow: View {
 
                 HStack(spacing: 12) {
                     Text(title)
+                        .allowsHitTesting(false)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(DialTheme.textLabel)
 
@@ -1038,14 +998,15 @@ private struct DialSliderRow: View {
         }
         .frame(height: 36)
         .onAppear {
-            draftValue = formatted(value, step: step, unit: nil)
+            draftValue = formatted(displayedValue, step: step, unit: nil)
         }
         .onChange(of: value) { _, newValue in
+            interaction.receive(newValue)
             guard !isValueEditing else {
                 return
             }
 
-            draftValue = formatted(newValue, step: step, unit: nil)
+            draftValue = formatted(displayedValue, step: step, unit: nil)
         }
     }
 
@@ -1079,13 +1040,13 @@ private struct DialSliderRow: View {
                 }
             }
         } else {
-            Text(formatted(value, step: step, unit: unit))
+            Text(formatted(displayedValue, step: step, unit: unit))
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(isInteracting ? Color.white : DialTheme.textLabel)
+                .foregroundStyle(interaction.isDragging ? Color.white : DialTheme.textLabel)
                 .frame(minWidth: valueEditorWidth, alignment: .trailing)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    draftValue = formatted(value, step: step, unit: nil)
+                    draftValue = formatted(displayedValue, step: step, unit: nil)
                     isValueEditing = true
                 }
         }
@@ -1095,7 +1056,7 @@ private struct DialSliderRow: View {
         let longestCount = [
             formatted(range.lowerBound, step: step, unit: nil).count,
             formatted(range.upperBound, step: step, unit: nil).count,
-            formatted(value, step: step, unit: nil).count,
+            formatted(displayedValue, step: step, unit: nil).count,
             draftValue.count
         ].max() ?? 4
 
@@ -1103,32 +1064,21 @@ private struct DialSliderRow: View {
     }
 
     private func sliderDragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 10)
+        DragGesture(minimumDistance: 0)
             .onChanged { gesture in
-                guard resolveSliderGestureDisposition(translation: gesture.translation) == .slider else {
-                    return
-                }
-
-                if !isInteracting {
-                    beginInteraction()
-                }
+                interaction.begin(remote: value)
                 updateValue(translation: gesture.translation.width, width: width)
             }
-            .onEnded { _ in
-                endInteraction()
+            .onEnded { gesture in
+                updateValue(translation: gesture.translation.width, width: width)
+                interaction.end(remote: value)
             }
     }
 
     private func updateValue(translation: CGFloat, width: CGFloat) {
-        let nextValue = sliderValueByApplyingTranslation(
-            translation,
-            width: width,
-            initialValue: interactionStartValue ?? value,
-            range: range,
-            step: step
-        )
-
-        onChange(nextValue)
+        if let next = interaction.update(translation: Double(translation), width: Double(width), range: range, step: step) {
+            onChange(next)
+        }
     }
 
     private func commitDraftValue() {
@@ -1137,12 +1087,13 @@ private struct DialSliderRow: View {
             .replacingOccurrences(of: unit ?? "", with: "")
 
         guard let rawValue = DialNumber.parse(normalized) else {
-            draftValue = formatted(value, step: step, unit: nil)
+            draftValue = formatted(displayedValue, step: step, unit: nil)
             return
         }
 
         let nextValue = snappedValue(rawValue)
         draftValue = formatted(nextValue, step: step, unit: nil)
+        interaction.commit(nextValue)
         onChange(nextValue)
     }
 
@@ -1150,23 +1101,6 @@ private struct DialSliderRow: View {
         DialNumber.round(rawValue, step: step, within: range)
     }
 
-    private func beginInteraction() {
-        guard !isInteracting else {
-            return
-        }
-
-        isInteracting = true
-        interactionStartValue = value
-    }
-
-    private func endInteraction() {
-        guard isInteracting else {
-            return
-        }
-
-        isInteracting = false
-        interactionStartValue = nil
-    }
 }
 
 #if canImport(AppKit)
@@ -1204,8 +1138,10 @@ private struct DialInlineNumberTextField: NSViewRepresentable {
             textField.stringValue = text
         }
 
+        guard !context.coordinator.didRequestFocus else { return }
+        context.coordinator.didRequestFocus = true
         DispatchQueue.main.async {
-            guard let window = textField.window,
+            guard !context.coordinator.isFinishing, let window = textField.window,
                   window.firstResponder !== textField.currentEditor() else {
                 return
             }
@@ -1222,7 +1158,8 @@ private struct DialInlineNumberTextField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: DialInlineNumberTextField
         private var clickAwayMonitor: Any?
-        private var isFinishing = false
+        fileprivate var isFinishing = false
+        fileprivate var didRequestFocus = false
 
         init(parent: DialInlineNumberTextField) {
             self.parent = parent
@@ -1772,54 +1709,11 @@ private extension DialKitBezierValue {
     }
 }
 
-private enum SliderGestureDisposition: Equatable {
-    case undecided
-    case slider
-    case scroll
-}
-
-private func sliderValueByApplyingTranslation(
-    _ translation: CGFloat,
-    width: CGFloat,
-    initialValue: Double,
-    range: ClosedRange<Double>,
-    step: Double
-) -> Double {
-    let safeWidth = max(width, 1)
-    let fractionDelta = Double(translation / safeWidth)
-    let raw = initialValue + fractionDelta * (range.upperBound - range.lowerBound)
-    return snapped(raw, range: range, step: step)
-}
-
-private func resolveSliderGestureDisposition(
-    translation: CGSize,
-    activationDistance: CGFloat = 10,
-    horizontalBias: CGFloat = 1.25
-) -> SliderGestureDisposition {
-    let horizontalDistance = abs(translation.width)
-    let verticalDistance = abs(translation.height)
-    let totalDistance = hypot(horizontalDistance, verticalDistance)
-
-    guard totalDistance >= activationDistance else {
-        return .undecided
-    }
-
-    if horizontalDistance > verticalDistance * horizontalBias {
-        return .slider
-    }
-
-    return .scroll
-}
-
 private func copyTextToPasteboard(_ text: String) {
     #if canImport(AppKit)
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
     #endif
-}
-
-private func snapped(_ raw: Double, range: ClosedRange<Double>, step: Double) -> Double {
-    DialNumber.round(raw, step: step, within: range)
 }
 
 private func color(from hex: String) -> Color {

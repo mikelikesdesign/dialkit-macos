@@ -60,15 +60,68 @@ final class DialKitMacOSAppTests: XCTestCase {
         XCTAssertEqual(service.snapshot?.panels.first?.id, panel.id)
     }
 
-    func testReplacementConnectionClearsOldSnapshotBeforeHello() async throws {
+    func testCompetingClientsCannotEvictActiveAppOrInterruptEdits() async throws {
         let service = DialKitInspectorService(port: nil)
         let panel = makePanel()
         defer { DialKitAgent.shared.stop(); withExtendedLifetime(panel) {} }
         try await connect(to: service)
-        let replacement = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: try XCTUnwrap(service.listeningPort))!, using: .tcp)
-        defer { replacement.cancel() }
-        replacement.start(queue: DispatchQueue(label: "InspectorReplacementTest"))
-        try await waitUntil { service.snapshot == nil }
+        var lostSession = false
+        let observer = service.$snapshot.sink { snapshot in
+            if snapshot?.appName != "Inspector Test" { lostSession = true }
+        }
+        defer { observer.cancel() }
+        let port = try XCTUnwrap(service.listeningPort)
+        for _ in 0..<5 {
+            let competitor = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+            competitor.start(queue: DispatchQueue(label: "CompetingPreview"))
+            let hello = DialKitAgentMessage.hello(.init(appName: "Competing Preview", panels: []))
+            competitor.send(content: try DialKitWireCodec.encode(hello), completion: .contentProcessed { _ in })
+            try await Task.sleep(for: .milliseconds(100))
+            competitor.cancel()
+        }
+        service.setControlValue(panelID: panel.id, path: "value", value: .number(42))
+        try await waitUntil { panel.values.value == 42 }
+        XCTAssertFalse(lostSession, "Preview reconnects must never clear or replace the active session")
+        XCTAssertEqual(service.snapshot?.appName, "Inspector Test")
+    }
+
+    func testRefreshRecoversAfterAnotherInspectorReleasesPort() async throws {
+        var owner: DialKitInspectorService? = DialKitInspectorService(port: nil)
+        try await waitUntil { owner?.listeningPort != nil }
+        let port = try XCTUnwrap(owner?.listeningPort)
+        let service = DialKitInspectorService(port: port)
+        try await waitUntil { service.status.contains("already running") }
+        owner = nil
+        try await Task.sleep(for: .milliseconds(100))
+        service.requestSnapshot()
+        try await waitUntil { service.listeningPort == port }
+    }
+
+    func testDragIgnoresDelayedEchoesUntilFinalValueIsAcknowledged() {
+        var editing = DialSliderEditingState()
+        editing.begin(remote: 20)
+        XCTAssertEqual(editing.update(translation: 30, width: 100, range: 0...100, step: 1), 50)
+        editing.receive(25)
+        XCTAssertEqual(editing.displayedValue(remote: 25), 50)
+        XCTAssertEqual(editing.update(translation: 40, width: 100, range: 0...100, step: 1), 60)
+        editing.end(remote: 40)
+        editing.receive(50)
+        XCTAssertEqual(editing.displayedValue(remote: 50), 60)
+        editing.receive(60)
+        XCTAssertNil(editing.pendingValue)
+        XCTAssertEqual(editing.displayedValue(remote: 70), 70)
+    }
+
+    func testConsecutiveDragsUseLocalValueAndSkipDuplicateSnappedEdits() {
+        var editing = DialSliderEditingState()
+        editing.begin(remote: 0.05)
+        XCTAssertEqual(editing.update(translation: 50, width: 100, range: 0.05...0.25, step: 0.1), 0.15)
+        XCTAssertNil(editing.update(translation: 51, width: 100, range: 0.05...0.25, step: 0.1))
+        editing.end(remote: 0.05)
+        editing.begin(remote: 0.05)
+        XCTAssertEqual(editing.update(translation: 50, width: 100, range: 0.05...0.25, step: 0.1), 0.25)
+        editing.receive(0.15)
+        XCTAssertEqual(editing.displayedValue(remote: 0.15), 0.25)
     }
 
     func testContinuousModelChangesSendIntermediateAndFinalSnapshots() async throws {

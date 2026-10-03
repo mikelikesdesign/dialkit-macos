@@ -256,7 +256,7 @@ The [demo app](Examples/DialKitDemo/DialKitDemo/ContentView.swift) uses a local 
 3. In Terminal, run `swift run dialkit-macos` from the repository root.
 4. Edit the **Card** panel. Try **Title**, **Layout → Corner Radius**, **Appearance → Fill**, and **Motion → Bounce**.
 
-The demo also has an agent-enabled `#Preview` for tuning in Xcode’s canvas. Run either the Simulator app or the preview at a time.
+The demo also has an agent-enabled `#Preview` for tuning in Xcode’s canvas. The inspector keeps its current app connection stable if both are running. Stop the connected app to switch to the other.
 
 ## Controls
 
@@ -405,7 +405,7 @@ Use `--app-name "My App"` to customize the name in the generated startup snippet
 | Preview connects only when running the full app | Add the guarded agent startup to the isolated preview’s `.task` and resume the canvas. |
 | Inspector is connected but no panel appears | Create a `DialPanelState` in the visible view or a retained owner. Use `@StateObject` in SwiftUI; a temporary local panel disappears when deallocated. |
 | A control changes but the interface does not | Read that property from `dial.values`, or observe `dial.$values` in UIKit/AppKit. Convert hex strings and motion values to framework types before applying them. |
-| The displayed app keeps changing | The inspector accepts one app connection at a time. Pause other previews, Simulator apps, or Mac apps that started an agent. |
+| Another app or Preview cannot connect | The inspector keeps the current session until it disconnects. Stop the connected app; the other agent reconnects automatically. |
 | **Could not listen** or **Listener failed** | Check for another inspector or process using port `44777`, close it, and restart the inspector. |
 | Values disappear after rebuilding or relaunching | Values and presets are in memory. Copy chosen values into your source defaults before restarting the app. |
 | SwiftPM reports a tools-version or SDK error | Confirm Xcode 15.3 or later is installed and selected with `xcode-select -p`; check `swift --version`. |

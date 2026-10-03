@@ -13,6 +13,7 @@ final class DialKitInspectorService: ObservableObject {
     private var listener: NWListener?
     private var connection: NWConnection?
     private var receiveBuffer = Data()
+    private var handshakeTimeout: Task<Void, Never>?
     @Published private(set) var listeningPort: UInt16?
     private let port: UInt16?
 
@@ -22,11 +23,13 @@ final class DialKitInspectorService: ObservableObject {
     }
 
     deinit {
+        handshakeTimeout?.cancel()
         listener?.cancel()
         connection?.cancel()
     }
 
     func requestSnapshot() {
+        if listener == nil { startListening() }
         send(.requestSnapshot)
     }
 
@@ -107,22 +110,39 @@ final class DialKitInspectorService: ObservableObject {
             listeningPort = listener?.port?.rawValue
             status = connection == nil ? "Listening on \(DialKitConnectionDefaults.host):\(listeningPort ?? 0)" : status
         case let .failed(error):
-            status = "Listener failed: \(error.localizedDescription)"
+            listener?.cancel()
+            listener = nil
+            listeningPort = nil
+            if error == .posix(.EADDRINUSE) {
+                status = "Another DialKit inspector is already running. Close it, then Refresh."
+            } else {
+                status = "Listener failed: \(error.localizedDescription)"
+            }
         default:
             break
         }
     }
 
     private func accept(_ newConnection: NWConnection) {
-        // Cancelling the previous connection delivers its .cancelled state and a
-        // failed receive asynchronously. Every handler below checks connection
-        // identity so those stale callbacks cannot clobber the new connection.
-        connection?.cancel()
+        // A Preview and Simulator may both reconnect automatically. Keep the
+        // current session instead of making them evict each other every second.
+        guard connection == nil else {
+            newConnection.cancel()
+            return
+        }
         connection = newConnection
         snapshot = nil
         lastLog = nil
         receiveBuffer.removeAll()
         status = "Connecting..."
+        handshakeTimeout?.cancel()
+        handshakeTimeout = Task { @MainActor [weak self, weak newConnection] in
+            do { try await Task.sleep(for: .seconds(5)) }
+            catch { return }
+            guard let self, let newConnection,
+                  self.connection === newConnection, self.snapshot == nil else { return }
+            self.dropCurrentConnection()
+        }
 
         newConnection.stateUpdateHandler = { [weak self, weak newConnection] state in
             Task { @MainActor in
@@ -152,6 +172,8 @@ final class DialKitInspectorService: ObservableObject {
     }
 
     private func dropCurrentConnection() {
+        handshakeTimeout?.cancel()
+        handshakeTimeout = nil
         connection?.cancel()
         connection = nil
         snapshot = nil
@@ -201,6 +223,8 @@ final class DialKitInspectorService: ObservableObject {
     private func handle(_ message: DialKitAgentMessage) {
         switch message {
         case let .hello(snapshot), let .snapshot(snapshot):
+            handshakeTimeout?.cancel()
+            handshakeTimeout = nil
             self.snapshot = snapshot
             status = "Connected to \(snapshot.appName)"
         case let .log(text):
