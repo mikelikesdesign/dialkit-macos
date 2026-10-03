@@ -12,11 +12,11 @@ This Swift package is based on the original [DialKit repository](https://github.
 
 [Installation](#installation) · [Quick start](#quick-start) · [Running the inspector](#running-the-inspector) · [Controls](#controls) · [Troubleshooting](#troubleshooting)
 
-## Why a Mac inspector
+## Overview
 
 Tuning values inside a phone-sized screen means the controls cover the thing you are tuning. Moving the controls to a Mac window gives you a full-size panel with proper sliders, a real color picker, and text fields you can actually type in, while you keep an unobstructed view of your app. The inspector UI runs in a separate process; the agent is started only in debug builds in the examples below.
 
-If you would rather have the dials inside your app as a drawer, take a look at the sibling package, [dialkit-ios](https://github.com/mikelikesdesign/dialkit-ios). Both packages share the same way of describing controls, so you can move between them easily.
+If you would rather have the dials inside your app as a drawer, take a look at the complementary package, [dialkit-ios](https://github.com/mikelikesdesign/dialkit-ios). Both packages share the same way of describing controls, so you can move between them easily.
 
 ## How it works
 
