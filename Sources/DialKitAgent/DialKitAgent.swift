@@ -110,8 +110,13 @@ public final class DialKitAgent {
         switch state {
         case .ready:
             send(.hello(DialStore.shared.remoteSnapshot(appName: appName)))
-        case .failed, .cancelled:
+        case .waiting, .failed, .cancelled:
+            // A refused connection can remain waiting forever, even after the
+            // inspector starts. Retire it before retrying so stale callbacks
+            // cannot schedule a second reconnect.
             self.connection = nil
+            connection.cancel()
+            receiveBuffer.removeAll()
             scheduleReconnect()
         default:
             break

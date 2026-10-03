@@ -340,6 +340,8 @@ let dial = DialPanelState(
 
 `DialSpring` can be time-based (`duration` in seconds and `bounce`) or physics-based (`stiffness`, `damping`, `mass`). `DialTransition` describes either a cubic Bézier easing curve or a spring. The inspector draws the curve as you edit it. Switching modes uses defaults for parameters the new mode cannot represent.
 
+Invalid spring or transition values are normalized by `DialPanelState`: initialization uses `.default` when needed, and later assignments restore the previous valid value. This keeps the control visible and consistent in both UIs.
+
 These are model values: convert them to your UI framework’s animation API. For SwiftUI, add these helpers:
 
 ```swift

@@ -872,6 +872,7 @@ private struct DialColorRow: View {
 private struct DialColorSwatchPicker: View {
     let hexValue: String
     let onChange: (String) -> Void
+    @State private var colorOwner = UUID()
 
     private var displayColor: Color {
         color(from: hexValue)
@@ -880,7 +881,7 @@ private struct DialColorSwatchPicker: View {
     var body: some View {
         Button {
             #if canImport(AppKit)
-            DialNativeColorPanel.shared.open(hexValue: hexValue, onChange: onChange)
+            DialNativeColorPanel.shared.open(owner: colorOwner, hexValue: hexValue, onChange: onChange)
             #endif
         } label: {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -894,49 +895,74 @@ private struct DialColorSwatchPicker: View {
         .frame(width: 24, height: 24)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .accessibilityLabel("Choose color")
+        .onDisappear {
+            #if canImport(AppKit)
+            DialNativeColorPanel.shared.endEditing(owner: colorOwner)
+            #endif
+        }
     }
 }
 
 #if canImport(AppKit)
-private final class DialNativeColorPanel: NSObject {
+final class DialNativeColorPanel: NSObject {
     static let shared = DialNativeColorPanel()
 
+    private let panel: NSColorPanel
+    private var owner: UUID?
     private var onChange: ((String) -> Void)?
-    private var colorChangeObserver: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
 
-    deinit {
-        if let colorChangeObserver {
-            NotificationCenter.default.removeObserver(colorChangeObserver)
-        }
+    init(panel: NSColorPanel = .shared) {
+        self.panel = panel
+        super.init()
     }
 
-    func open(hexValue: String, onChange: @escaping (String) -> Void) {
-        self.onChange = onChange
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+    }
 
-        let panel = NSColorPanel.shared
+    func open(owner: UUID, hexValue: String, onChange: @escaping (String) -> Void) {
+        beginEditing(owner: owner, hexValue: hexValue, onChange: onChange)
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func beginEditing(owner: UUID, hexValue: String, onChange: @escaping (String) -> Void) {
+        // Remove the previous observer before setting the new row's color;
+        // programmatic color changes can also post a color notification.
+        clearSession()
         panel.showsAlpha = true
         panel.isContinuous = true
         panel.color = nsColor(from: hexValue)
-
-        if let colorChangeObserver {
-            NotificationCenter.default.removeObserver(colorChangeObserver)
-        }
-
-        colorChangeObserver = NotificationCenter.default.addObserver(
-            forName: NSColorPanel.colorDidChangeNotification,
-            object: panel,
-            queue: .main
+        self.owner = owner
+        self.onChange = onChange
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSColorPanel.colorDidChangeNotification, object: panel, queue: .main
         ) { [weak self] notification in
-            guard let panel = notification.object as? NSColorPanel,
-                  let hex = hexString(from: panel.color) else {
-                return
-            }
+            guard let self, self.owner == owner,
+                  let panel = notification.object as? NSColorPanel,
+                  let hex = hexString(from: panel.color) else { return }
+            self.onChange?(hex)
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            self?.endEditing(owner: owner)
+        })
+    }
 
-            self?.onChange?(hex)
-        }
+    func endEditing(owner: UUID) {
+        // A disappearing old row must not close a picker opened by a new row.
+        guard self.owner == owner else { return }
+        clearSession()
+        panel.orderOut(nil)
+    }
 
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    private func clearSession() {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.removeAll()
+        onChange = nil
+        owner = nil
     }
 }
 #endif

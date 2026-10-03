@@ -8,6 +8,11 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     @Published public var values: Model {
         didSet {
             guard !isApplyingInternalChange else { return }
+            var normalized = dialCopyModel(values)
+            for control in controls {
+                control.node.normalizeMotion(current: &normalized, fallback: oldValue)
+            }
+            if normalized != values { applyInternalValueChange(normalized) }
             synchronizeValues()
         }
     }

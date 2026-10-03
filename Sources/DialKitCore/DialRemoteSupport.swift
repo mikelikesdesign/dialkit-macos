@@ -73,7 +73,7 @@ private extension DialKitControlKind {
     }
 }
 
-private extension DialKitSpringValue {
+extension DialKitSpringValue {
     init(_ spring: DialSpring) {
         switch spring {
         case let .time(duration, bounce):
@@ -107,7 +107,7 @@ private extension DialBezier {
     }
 }
 
-private extension DialKitTransitionValue {
+extension DialKitTransitionValue {
     init(_ transition: DialTransition) {
         switch transition {
         case let .easing(duration, bezier):

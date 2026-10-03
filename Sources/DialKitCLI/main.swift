@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 @main
-private enum DialKitCLI {
+enum DialKitCLI {
     static func main() {
         dispatch(arguments: Array(CommandLine.arguments.dropFirst()))
     }
@@ -46,13 +46,21 @@ private enum DialKitCLI {
 
     private static func install(arguments: [String]) -> Never {
         do {
-            let options = try InstallOptions(arguments: arguments)
-            try validateInstallOptions(options)
-            printInstallGuide(for: options)
+            print(try installOutput(arguments: arguments))
             exit(EXIT_SUCCESS)
         } catch {
             fputs("\(error.localizedDescription)\n\n\(installHelp)\n", stderr)
             exit(EX_USAGE)
+        }
+    }
+
+    static func installOutput(arguments: [String]) throws -> String {
+        do {
+            let options = try InstallOptions(arguments: arguments)
+            try validateInstallOptions(options)
+            return installGuide(for: options)
+        } catch InstallRequest.help {
+            return installHelp
         }
     }
 
@@ -73,10 +81,10 @@ private enum DialKitCLI {
         }
     }
 
-    private static func printInstallGuide(for options: InstallOptions) {
+    static func installGuide(for options: InstallOptions) -> String {
         let appName = options.appName ?? options.targetName
 
-        print("""
+        return """
         Dialkit macOS package-only install preflight passed.
 
         Project: \(options.projectPath)
@@ -89,6 +97,8 @@ private enum DialKitCLI {
            - DialkitmacOSAgent
         3. Start the agent only in debug builds:
 
+        import SwiftUI
+
         #if DEBUG
         import DialkitmacOSAgent
         #endif
@@ -97,7 +107,7 @@ private enum DialKitCLI {
         struct \(sanitizedTypeName(from: appName))App: App {
             init() {
                 #if DEBUG
-                DialKitAgent.shared.start(appName: "\(appName)")
+                DialKitAgent.shared.start(appName: \(String(reflecting: appName)))
                 #endif
             }
 
@@ -114,7 +124,7 @@ private enum DialKitCLI {
             ContentView()
                 .task {
                     #if DEBUG
-                    DialKitAgent.shared.start(appName: "\(appName) Preview")
+                    DialKitAgent.shared.start(appName: \(String(reflecting: appName + " Preview")))
                     #endif
                 }
         }
@@ -124,7 +134,7 @@ private enum DialKitCLI {
         swift run dialkit run
 
         This command does not mutate the Xcode project yet. It validates the target and prints the package-only wiring so release builds stay clean.
-        """)
+        """
     }
 
     private static func sanitizedTypeName(from value: String) -> String {
@@ -152,7 +162,7 @@ private enum DialKitCLI {
     No separate Dialkit macOS.app download is required.
     """
 
-    fileprivate static let installHelp = """
+    static let installHelp = """
     Usage:
       swift run dialkit install --project MyApp.xcodeproj --target MyApp [--app-name "My App"]
     """
@@ -178,7 +188,9 @@ private extension Array where Element == String {
     }
 }
 
-private struct InstallOptions {
+enum InstallRequest: Error { case help }
+
+struct InstallOptions {
     let projectPath: String
     let targetName: String
     let appName: String?
@@ -199,7 +211,7 @@ private struct InstallOptions {
             case "--app-name":
                 appName = try Self.value(after: argument, in: arguments, index: &index)
             case "-h", "--help":
-                throw CLIError(DialKitCLI.installHelp)
+                throw InstallRequest.help
             default:
                 throw CLIError("Unknown install option: \(argument)")
             }

@@ -21,6 +21,44 @@ final class DialKitAgentTests: XCTestCase {
         try await super.tearDown()
     }
 
+    func testAppStartedBeforeInspectorEventuallyConnects() async throws {
+        let port = inspector.port
+        inspector.stop()
+        try await Task.sleep(for: .milliseconds(200))
+        DialKitAgent.shared.start(appName: "Started first", port: port)
+        // Leave enough time for retries to encounter connection refused.
+        try await Task.sleep(for: .seconds(2))
+        try await inspector.start(port: port)
+        try await inspector.waitForAccepts(1, timeout: 5)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(inspector.helloAppNames, ["Started first"])
+    }
+
+    func testInspectorCanRestartAfterReconnectAlreadyEncounteredRefusal() async throws {
+        let port = inspector.port
+        DialKitAgent.shared.start(appName: "Restart", port: port)
+        try await inspector.waitForAccepts(1)
+        inspector.stop()
+        try await Task.sleep(for: .seconds(2.5))
+        try await inspector.start(port: port)
+        try await inspector.waitForAccepts(2, timeout: 5)
+        try await Task.sleep(for: .seconds(1.2))
+        XCTAssertEqual(inspector.acceptCount, 2)
+        XCTAssertEqual(inspector.helloAppNames.last, "Restart")
+    }
+
+    func testStopWhileWaitingCancelsRetries() async throws {
+        let port = inspector.port
+        inspector.stop()
+        try await Task.sleep(for: .milliseconds(200))
+        DialKitAgent.shared.start(appName: "Stopped", port: port)
+        try await Task.sleep(for: .milliseconds(200))
+        DialKitAgent.shared.stop()
+        try await inspector.start(port: port)
+        try await Task.sleep(for: .seconds(1.5))
+        XCTAssertEqual(inspector.acceptCount, 0)
+    }
+
     func testRepeatedStartWithSameEndpointKeepsSingleConnection() async throws {
         DialKitAgent.shared.start(appName: "Test", port: inspector.port)
         DialKitAgent.shared.start(appName: "Test", port: inspector.port)
@@ -93,9 +131,10 @@ private final class FakeInspector: @unchecked Sendable {
         return _helloAppNames
     }
 
-    func start() async throws {
+    func start(port requestedPort: UInt16? = nil) async throws {
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        parameters.allowLocalEndpointReuse = true
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: requestedPort.flatMap(NWEndpoint.Port.init(rawValue:)) ?? .any)
         let listener = try NWListener(using: parameters)
         self.listener = listener
 

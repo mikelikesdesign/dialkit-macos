@@ -1,4 +1,5 @@
 import Foundation
+import DialkitmacOSProtocol
 
 package struct DialResolvedControl: Identifiable {
     package let path: String
@@ -206,8 +207,15 @@ public struct DialControl<Model> {
         step: Value? = nil,
         unit: String? = nil
     ) -> DialControl<Model> {
-        let doubleRange = range.lowerBound.dialDoubleValue...range.upperBound.dialDoubleValue
-        var doubleStep = step?.dialDoubleValue ?? dialInferredStep(for: doubleRange)
+        // Preserve Float's intended decimal precision when describing a stepped
+        // control. Promoting its binary representation to Double adds digits
+        // that were never present in the model's value or step.
+        func decimalValue(_ value: Value) -> Double {
+            if let float = value as? Float, let decimal = Double(String(float)) { return decimal }
+            return value.dialDoubleValue
+        }
+        let doubleRange = decimalValue(range.lowerBound)...decimalValue(range.upperBound)
+        var doubleStep = step.map(decimalValue) ?? dialInferredStep(for: doubleRange)
         if Value.self == Int.self {
             // Integer models cannot acknowledge fractional slider values.
             doubleStep = max(1, doubleStep)
@@ -220,7 +228,7 @@ public struct DialControl<Model> {
                 step: doubleStep,
                 unit: unit,
                 getter: { model in
-                    model[keyPath: keyPath].dialDoubleValue
+                    doubleStep > 0 ? decimalValue(model[keyPath: keyPath]) : model[keyPath: keyPath].dialDoubleValue
                 },
                 setter: { model, newValue in
                     let currentValue = model[keyPath: keyPath]
@@ -391,16 +399,32 @@ package extension DialControlNode where Model: Codable & Equatable {
                 setter(&current, getter(fallback))
                 return
             }
-        case .spring:
-            break
-        case .transition:
-            break
+        case .spring, .transition:
+            normalizeMotion(current: &current, fallback: fallback)
         case let .group(_, _, _, children):
             for child in children {
                 child.normalize(current: &current, fallback: fallback)
             }
         case .action:
             break
+        }
+    }
+
+    /// Keep local rendering, presets, and remote snapshots on the same valid
+    /// motion value. A malformed initial value falls back to the public default.
+    func normalizeMotion(current: inout Model, fallback: Model) {
+        switch self {
+        case let .spring(_, _, getter, setter):
+            guard !DialKitSpringValue(getter(current)).isValid else { return }
+            let previous = getter(fallback)
+            setter(&current, DialKitSpringValue(previous).isValid ? previous : .default)
+        case let .transition(_, _, getter, setter):
+            guard !DialKitTransitionValue(getter(current)).isValid else { return }
+            let previous = getter(fallback)
+            setter(&current, DialKitTransitionValue(previous).isValid ? previous : .default)
+        case let .group(_, _, _, children):
+            for child in children { child.normalizeMotion(current: &current, fallback: fallback) }
+        default: break
         }
     }
 

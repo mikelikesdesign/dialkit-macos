@@ -2,6 +2,23 @@ import XCTest
 @testable import DialkitmacOSCLI
 
 final class DialKitCLITests: XCTestCase {
+    func testInstallHelpIsSuccessfulAndPrintedOnce() throws {
+        for option in ["-h", "--help"] {
+            let output = try DialKitCLI.installOutput(arguments: [option])
+            XCTAssertEqual(output, DialKitCLI.installHelp)
+            XCTAssertEqual(output.components(separatedBy: "Usage:").count - 1, 1)
+        }
+    }
+
+    func testInstallGuideEscapesSwiftStringLiterals() throws {
+        let name = "My \"App\" \\(danger)\nNext\tLine"
+        let options = try InstallOptions(arguments: ["--project", "Demo.xcodeproj", "--target", "Demo", "--app-name", name])
+        let guide = DialKitCLI.installGuide(for: options)
+        XCTAssertTrue(guide.contains("appName: " + String(reflecting: name) + ")"))
+        XCTAssertTrue(guide.contains("appName: " + String(reflecting: name + " Preview") + ")"))
+        XCTAssertFalse(guide.contains("appName: \"" + name + "\""))
+    }
+
     func testOnlyNativeTargetNamesAreAccepted() throws {
         let project = Data("""
         // !$*UTF8*$!
