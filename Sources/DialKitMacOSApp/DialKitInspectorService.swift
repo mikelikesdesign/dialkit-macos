@@ -201,7 +201,10 @@ final class DialKitInspectorService: ObservableObject {
             do {
                 let messages = try DialKitWireCodec.decodeAvailableMessages(
                     from: &receiveBuffer,
-                    as: DialKitAgentMessage.self
+                    as: DialKitAgentMessage.self,
+                    onDecodingError: { error in
+                        self.lastLog = "Could not decode app message: \(error.localizedDescription)"
+                    }
                 )
 
                 for message in messages {

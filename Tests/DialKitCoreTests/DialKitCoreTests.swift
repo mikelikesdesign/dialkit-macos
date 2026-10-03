@@ -56,6 +56,26 @@ final class DialKitCoreTests: XCTestCase {
         XCTAssertTrue(DialStore.shared.panels.isEmpty)
     }
 
+    func testReplacedPanelSurvivesPreviousInstanceDeinitialization() {
+        let id = UUID()
+        var previous: DialPanelState<DemoModel>? = DialPanelState(
+            id: id, name: "Old", initial: DemoModel(), controls: []
+        )
+        var replacement: DialPanelState<DemoModel>? = DialPanelState(
+            id: id, name: "New", initial: DemoModel(), controls: [
+                .slider("opacity", keyPath: \.opacity, range: 0...1, step: 0.1)
+            ]
+        )
+        weak var weakPrevious = previous
+        previous = nil
+        XCTAssertNil(weakPrevious)
+        XCTAssertEqual(DialStore.shared.remoteSnapshot(appName: "Test").panels.map(\.name), ["New"])
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: id, path: "opacity", value: .number(0.8)))
+        XCTAssertEqual(replacement?.values.opacity, 0.8)
+        replacement = nil
+        XCTAssertTrue(DialStore.shared.panels.isEmpty)
+    }
+
     func testResolvedControlMetadataIncludesNestedChildren() {
         let state = makeState()
         let resolved = state.resolvedControls()

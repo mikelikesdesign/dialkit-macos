@@ -105,9 +105,11 @@ public final class DialStore: ObservableObject {
         }
     }
 
-    package func unregister(id: UUID) {
-        panels.removeAll { $0.id == id }
-        panelCancellables[id] = nil
+    package func unregister(_ panel: AnyDialPanelBox) {
+        // A newer state may already have registered the same stable ID.
+        guard let index = panels.firstIndex(where: { $0 === panel }) else { return }
+        panels.remove(at: index)
+        panelCancellables[panel.id] = nil
     }
 
     package func resetForTesting() {

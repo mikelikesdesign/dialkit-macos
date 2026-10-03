@@ -46,7 +46,7 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     }
 
     deinit {
-        DialStore.shared.unregister(id: id)
+        DialStore.shared.unregister(panelBox)
     }
 
     public func configure(

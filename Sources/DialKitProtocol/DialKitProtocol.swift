@@ -151,9 +151,12 @@ public enum DialKitWireCodec {
         return data
     }
 
+    /// Decodes complete frames independently. Malformed frames are reported and
+    /// skipped without losing valid neighbours; incomplete frames remain buffered.
     public static func decodeAvailableMessages<Message: Decodable>(
         from buffer: inout Data,
-        as type: Message.Type
+        as type: Message.Type,
+        onDecodingError: (Error) -> Void = { _ in }
     ) throws -> [Message] {
         var messages: [Message] = []
         let decoder = JSONDecoder()
@@ -166,7 +169,11 @@ public enum DialKitWireCodec {
                 continue
             }
 
-            messages.append(try decoder.decode(Message.self, from: Data(line)))
+            do {
+                messages.append(try decoder.decode(Message.self, from: Data(line)))
+            } catch {
+                onDecodingError(error)
+            }
         }
 
         return messages

@@ -112,6 +112,60 @@ final class DialKitMacOSAppTests: XCTestCase {
         XCTAssertEqual(editing.displayedValue(remote: 70), 70)
     }
 
+    func testUnchangedNumericCommitDoesNotBlockLaterPresetValue() {
+        var editing = DialSliderEditingState()
+        XCTAssertFalse(editing.commit(20, remote: 20, step: 1))
+        XCTAssertNil(editing.pendingValue)
+        // An unchanged snapshot does not call the view's onChange observer.
+        editing.receive(40)
+        XCTAssertEqual(editing.displayedValue(remote: 40), 40)
+    }
+
+    func testRevertingToRemoteValueStillSendsOverAnInFlightEdit() {
+        var editing = DialSliderEditingState()
+        XCTAssertTrue(editing.commit(30, remote: 20, step: 1))
+        XCTAssertTrue(editing.commit(20, remote: 20, step: 1))
+        XCTAssertNil(editing.pendingValue)
+        editing.receive(40)
+        XCTAssertEqual(editing.displayedValue(remote: 40), 40)
+    }
+
+    func testFloatModelAcknowledgesDragAndTypedEdits() throws {
+        struct FloatModel: Codable, Equatable { var value: Float = 0 }
+        let panel = DialPanelState(name: "Float", initial: FloatModel(), controls: [
+            .slider("value", keyPath: \.value, range: Float(0)...Float(1), step: Float(0.1))
+        ])
+        let step = Double(Float(0.1))
+        var editing = DialSliderEditingState()
+        editing.begin(remote: 0)
+        let sent = try XCTUnwrap(editing.update(translation: 30, width: 100, range: 0...1, step: step))
+        editing.end(remote: 0)
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: panel.id, path: "value", value: .number(sent)))
+        let echoed = Double(panel.values.value)
+        XCTAssertNotEqual(sent, echoed, "Exercise a real Float conversion, not an exact Double echo")
+        editing.receive(echoed)
+        XCTAssertNil(editing.pendingValue)
+        XCTAssertEqual(editing.displayedValue(remote: echoed), echoed)
+
+        let typed = DialNumber.round(0.7, step: step, within: 0...1)
+        XCTAssertTrue(editing.commit(typed, remote: echoed, step: step))
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: panel.id, path: "value", value: .number(typed)))
+        editing.receive(Double(panel.values.value))
+        XCTAssertNil(editing.pendingValue)
+        panel.values.value = 0.8
+        editing.receive(Double(panel.values.value))
+        XCTAssertEqual(editing.displayedValue(remote: Double(panel.values.value)), Double(panel.values.value))
+    }
+
+    func testFloatToleranceDoesNotAcknowledgeNeighbouringFineDoubleStep() {
+        var editing = DialSliderEditingState()
+        XCTAssertTrue(editing.commit(1.000000002, remote: 1, step: 0.000000001))
+        editing.receive(1.000000001)
+        XCTAssertEqual(editing.pendingValue, 1.000000002)
+        editing.receive(1.000000002)
+        XCTAssertNil(editing.pendingValue)
+    }
+
     func testConsecutiveDragsUseLocalValueAndSkipDuplicateSnappedEdits() {
         var editing = DialSliderEditingState()
         editing.begin(remote: 0.05)

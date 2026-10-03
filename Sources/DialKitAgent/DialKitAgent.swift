@@ -137,7 +137,10 @@ public final class DialKitAgent {
             do {
                 let messages = try DialKitWireCodec.decodeAvailableMessages(
                     from: &receiveBuffer,
-                    as: DialKitInspectorMessage.self
+                    as: DialKitInspectorMessage.self,
+                    onDecodingError: { error in
+                        self.sendLog("Could not decode inspector message: \(error.localizedDescription)")
+                    }
                 )
 
                 for message in messages {

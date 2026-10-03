@@ -1093,8 +1093,9 @@ private struct DialSliderRow: View {
 
         let nextValue = snappedValue(rawValue)
         draftValue = formatted(nextValue, step: step, unit: nil)
-        interaction.commit(nextValue)
-        onChange(nextValue)
+        if interaction.commit(nextValue, remote: value, step: step) {
+            onChange(nextValue)
+        }
     }
 
     private func snappedValue(_ rawValue: Double) -> Double {
