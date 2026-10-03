@@ -19,6 +19,27 @@ final class DialKitCoreTests: XCTestCase {
         DialStore.shared.resetForTesting()
     }
 
+    func testSliderNormalizationAndRemoteEditsPreserveOffsetRange() {
+        struct OffsetModel: Codable, Equatable { var value = 0.05 }
+        let state = DialPanelState(name: "Offset", initial: OffsetModel(), controls: [
+            .slider("value", keyPath: \.value, range: 0.05...0.25, step: 0.1)
+        ])
+        XCTAssertEqual(state.values.value, 0.05)
+        for value in [0.05, 0.15, 0.25] {
+            XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: state.id, path: "value", value: .number(value)))
+            XCTAssertEqual(state.values.value, value)
+        }
+    }
+
+    func testRoundingClampsAfterSnappingAndPreservesFractionalBounds() {
+        XCTAssertEqual(dialRound(0.26, step: 0.1, within: 0.05...0.26), 0.25)
+        XCTAssertEqual(dialRound(0.32, step: 0.1, within: 0.05...0.32), 0.32)
+        XCTAssertEqual(dialRound(-0.15, step: 0.1, within: -0.25...0.25), -0.15)
+        XCTAssertEqual(dialRound(0.3, step: 0.1, within: 0...1), 0.3)
+        XCTAssertEqual(dialRound(0.125, step: 0.001, within: 0...1), 0.125)
+        XCTAssertEqual(dialRound(0.00000003, step: 0.00000001, within: 0...1), 0.00000003)
+    }
+
     func testPanelRegisterAndUnregisterTracksStore() {
         weak var weakState: DialPanelState<DemoModel>?
 

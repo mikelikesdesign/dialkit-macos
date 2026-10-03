@@ -25,15 +25,31 @@ public final class DialKitAgent {
         host: String = DialKitConnectionDefaults.host,
         port: UInt16 = DialKitConnectionDefaults.port
     ) {
+        let resolvedAppName = appName ?? Self.defaultAppName
+
+        // Calling start() again with the same endpoint is a no-op apart from
+        // refreshing the app name. This is common in Xcode Previews, where a
+        // `.task` that starts the agent re-runs whenever the view is recreated.
+        if isRunning, self.host == host, self.port == port {
+            if self.appName != resolvedAppName {
+                self.appName = resolvedAppName
+                sendSnapshot()
+            }
+            return
+        }
+
         stop()
 
-        self.appName = appName ?? Self.defaultAppName
+        self.appName = resolvedAppName
         self.host = host
         self.port = port
         isRunning = true
 
         storeCancellable = DialStore.shared.objectWillChange
-            .debounce(for: .milliseconds(80), scheduler: DispatchQueue.main)
+            .throttle(for: .milliseconds(80), scheduler: DispatchQueue.main, latest: true)
+            // objectWillChange fires before the model is updated. Deliver on the
+            // next main-queue turn so even the first throttled event reads new values.
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.sendSnapshot()
             }
@@ -67,12 +83,17 @@ public final class DialKitAgent {
             return
         }
 
+        // Never leave a previous connection alive when replacing it. Its
+        // callbacks are ignored by the identity checks below.
+        self.connection?.cancel()
+
         let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
         self.connection = connection
 
-        connection.stateUpdateHandler = { [weak self] state in
+        connection.stateUpdateHandler = { [weak self, weak connection] state in
             Task { @MainActor in
-                self?.handleStateUpdate(state)
+                guard let connection else { return }
+                self?.handleStateUpdate(state, connection: connection)
             }
         }
 
@@ -80,14 +101,18 @@ public final class DialKitAgent {
         connection.start(queue: queue)
     }
 
-    private func handleStateUpdate(_ state: NWConnection.State) {
+    private func handleStateUpdate(_ state: NWConnection.State, connection: NWConnection) {
+        guard self.connection === connection else {
+            // Stale callback from a connection that was already replaced or stopped.
+            return
+        }
+
         switch state {
         case .ready:
             send(.hello(DialStore.shared.remoteSnapshot(appName: appName)))
         case .failed, .cancelled:
-            if isRunning {
-                scheduleReconnect()
-            }
+            self.connection = nil
+            scheduleReconnect()
         default:
             break
         }
@@ -102,6 +127,10 @@ public final class DialKitAgent {
     }
 
     private func handleReceive(data: Data?, isComplete: Bool, error: NWError?, connection: NWConnection) {
+        guard self.connection === connection else {
+            return
+        }
+
         if let data, !data.isEmpty {
             receiveBuffer.append(data)
 
@@ -119,7 +148,11 @@ public final class DialKitAgent {
             }
         }
 
-        guard error == nil, !isComplete, self.connection === connection else {
+        guard error == nil, !isComplete else {
+            // The inspector closed the connection (or it failed). Tear it down
+            // so the state handler cannot also schedule a competing reconnect.
+            self.connection = nil
+            connection.cancel()
             scheduleReconnect()
             return
         }

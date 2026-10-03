@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run package tests
+        run: swift test
+      - name: Build inspector for release
+        run: swift build -c release --product dialkit-macos
+      - name: Build demo for Simulator in Debug and Release
+        run: |
+          for configuration in Debug Release; do
+            xcodebuild -project Examples/DialKitDemo/DialKitDemo.xcodeproj \
+              -scheme DialKitDemo -configuration "$configuration" \
+              -destination 'generic/platform=iOS Simulator' \
+              CODE_SIGNING_ALLOWED=NO build
+          done

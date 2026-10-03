@@ -2,5 +2,7 @@
 .build/
 .swiftpm/
 DerivedData/
+xcuserdata/
 DialKit MacOS.app/
 DialKit macOS.app/
+Dialkit macOS.app/

@@ -1,0 +1,273 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D1A0000100000000000000A1 /* DialKitDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0000100000000000000F1 /* DialKitDemoApp.swift */; };
+		D1A0000100000000000000A2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0000100000000000000F2 /* ContentView.swift */; };
+		D1A0000100000000000000A3 /* DialkitmacOS in Frameworks */ = {isa = PBXBuildFile; productRef = D1A000010000000000000061 /* DialkitmacOS */; };
+		D1A0000100000000000000A4 /* DialkitmacOSAgent in Frameworks */ = {isa = PBXBuildFile; productRef = D1A000010000000000000062 /* DialkitmacOSAgent */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		D1A0000100000000000000F0 /* DialKitDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DialKitDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1A0000100000000000000F1 /* DialKitDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialKitDemoApp.swift; sourceTree = "<group>"; };
+		D1A0000100000000000000F2 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D1A0000100000000000000B2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1A0000100000000000000A3 /* DialkitmacOS in Frameworks */,
+				D1A0000100000000000000A4 /* DialkitmacOSAgent in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D1A000010000000000000090 = {
+			isa = PBXGroup;
+			children = (
+				D1A000010000000000000091 /* DialKitDemo */,
+				D1A000010000000000000092 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D1A000010000000000000091 /* DialKitDemo */ = {
+			isa = PBXGroup;
+			children = (
+				D1A0000100000000000000F1 /* DialKitDemoApp.swift */,
+				D1A0000100000000000000F2 /* ContentView.swift */,
+			);
+			path = DialKitDemo;
+			sourceTree = "<group>";
+		};
+		D1A000010000000000000092 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D1A0000100000000000000F0 /* DialKitDemo.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D1A000010000000000000041 /* DialKitDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1A000010000000000000072 /* Build configuration list for PBXNativeTarget "DialKitDemo" */;
+			buildPhases = (
+				D1A0000100000000000000B1 /* Sources */,
+				D1A0000100000000000000B2 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DialKitDemo;
+			packageProductDependencies = (
+				D1A000010000000000000061 /* DialkitmacOS */,
+				D1A000010000000000000062 /* DialkitmacOSAgent */,
+			);
+			productName = DialKitDemo;
+			productReference = D1A0000100000000000000F0 /* DialKitDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D1A000010000000000000050 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1530;
+				LastUpgradeCheck = 1530;
+				TargetAttributes = {
+					D1A000010000000000000041 = {
+						CreatedOnToolsVersion = 15.3;
+					};
+				};
+			};
+			buildConfigurationList = D1A000010000000000000071 /* Build configuration list for PBXProject "DialKitDemo" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D1A000010000000000000090;
+			packageReferences = (
+				D1A000010000000000000081 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			productRefGroup = D1A000010000000000000092 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D1A000010000000000000041 /* DialKitDemo */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D1A0000100000000000000B1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1A0000100000000000000A1 /* DialKitDemoApp.swift in Sources */,
+				D1A0000100000000000000A2 /* ContentView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		D1A0000100000000000000C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D1A0000100000000000000C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		D1A0000100000000000000C3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mikelikesdesign.DialKitDemo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D1A0000100000000000000C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mikelikesdesign.DialKitDemo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D1A000010000000000000071 /* Build configuration list for PBXProject "DialKitDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1A0000100000000000000C1 /* Debug */,
+				D1A0000100000000000000C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1A000010000000000000072 /* Build configuration list for PBXNativeTarget "DialKitDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1A0000100000000000000C3 /* Debug */,
+				D1A0000100000000000000C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		D1A000010000000000000081 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D1A000010000000000000061 /* DialkitmacOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DialkitmacOS;
+		};
+		D1A000010000000000000062 /* DialkitmacOSAgent */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DialkitmacOSAgent;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = D1A000010000000000000050 /* Project object */;
+}

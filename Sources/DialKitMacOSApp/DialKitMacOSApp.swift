@@ -6,10 +6,13 @@ import AppKit
 
 @main
 struct DialKitMacOSApp: App {
+    #if canImport(AppKit)
+    @NSApplicationDelegateAdaptor(DialKitAppDelegate.self) private var appDelegate
+    #endif
     @StateObject private var service = DialKitInspectorService()
 
     var body: some Scene {
-        WindowGroup("DialKit macOS") {
+        WindowGroup("Dialkit macOS") {
             InspectorView()
                 .environmentObject(service)
                 .frame(minWidth: 320, minHeight: 420)
@@ -18,6 +21,23 @@ struct DialKitMacOSApp: App {
         .defaultSize(width: 390, height: 720)
     }
 }
+
+#if canImport(AppKit)
+private final class DialKitAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        DispatchQueue.main.async {
+            NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        }
+    }
+}
+#endif
 
 private enum DialTheme {
     static let panelBackground = color(from: "#212121")
@@ -103,6 +123,30 @@ private struct InspectorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+        .overlay(alignment: .bottom) {
+            connectionFooter
+        }
+    }
+
+    private var connectionFooter: some View {
+        VStack(spacing: 4) {
+            Text(service.status)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(DialTheme.textMuted)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+
+            if let lastLog = service.lastLog {
+                Text(lastLog)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DialTheme.textMuted.opacity(0.8))
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .textSelection(.enabled)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
     }
 
     private func selectedPanel(in snapshot: DialKitSessionSnapshot) -> DialKitPanelSnapshot? {
@@ -753,7 +797,19 @@ private struct DialTextRow: View {
     let placeholder: String
     let onChange: (String) -> Void
 
+    // Edit a local draft so each keystroke does not wait for the app's snapshot
+    // round-trip before appearing. Changes are sent while typing, but the field
+    // only re-syncs from the remote value when it is not focused.
+    @State private var draft: String
     @FocusState private var isFocused: Bool
+
+    init(title: String, value: String, placeholder: String, onChange: @escaping (String) -> Void) {
+        self.title = title
+        self.value = value
+        self.placeholder = placeholder
+        self.onChange = onChange
+        self._draft = State(initialValue: value)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -761,13 +817,28 @@ private struct DialTextRow: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(DialTheme.textLabel)
 
-            TextField(placeholder, text: Binding(get: { value }, set: onChange))
+            TextField(placeholder, text: $draft)
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(DialTheme.textLabel)
                 .tint(.white)
                 .focused($isFocused)
+                .onChange(of: draft) { _, newValue in
+                    guard isFocused, newValue != value else { return }
+                    onChange(newValue)
+                }
+                .onChange(of: value) { _, newValue in
+                    guard !isFocused else { return }
+                    draft = newValue
+                }
+                .onChange(of: isFocused) { _, focused in
+                    if focused {
+                        draft = value
+                    } else if draft != value {
+                        onChange(draft)
+                    }
+                }
         }
         .frame(height: 36)
         .padding(.horizontal, 12)
@@ -806,6 +877,9 @@ private struct DialColorRow: View {
                 .frame(width: 96)
                 .focused($isFocused)
                 .onSubmit(commitDraft)
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { commitDraft() }
+                }
                 .onChange(of: hexValue) { _, newValue in
                     guard !isFocused else { return }
                     draft = newValue.uppercased()
@@ -822,23 +896,11 @@ private struct DialColorRow: View {
     }
 
     private func commitDraft() {
-        let filtered = String(draft.uppercased().filter { $0.isHexDigit || $0 == "#" })
-        let normalized: String
-        if filtered.isEmpty {
-            normalized = hexValue
-        } else if filtered.first == "#" {
-            normalized = String(filtered.prefix(9))
-        } else {
-            normalized = "#" + String(filtered.prefix(8))
-        }
-
-        if isValidHexColor(normalized) {
-            draft = normalized
-            onChange(normalized)
-        } else {
-            draft = hexValue.uppercased()
-        }
+        let next = InspectorDraft.color(draft, fallback: hexValue)
+        draft = next
+        if next != hexValue.uppercased() { onChange(next) }
     }
+
 }
 
 private struct DialColorSwatchPicker: View {
@@ -1074,7 +1136,7 @@ private struct DialSliderRow: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: unit ?? "", with: "")
 
-        guard let rawValue = Double(normalized) else {
+        guard let rawValue = DialNumber.parse(normalized) else {
             draftValue = formatted(value, step: step, unit: nil)
             return
         }
@@ -1085,14 +1147,7 @@ private struct DialSliderRow: View {
     }
 
     private func snappedValue(_ rawValue: Double) -> Double {
-        let clamped = min(max(rawValue, range.lowerBound), range.upperBound)
-        guard step > 0 else {
-            return clamped
-        }
-
-        let offset = clamped - range.lowerBound
-        let rounded = (offset / step).rounded() * step + range.lowerBound
-        return min(max(rounded, range.lowerBound), range.upperBound)
+        DialNumber.round(rawValue, step: step, within: range)
     }
 
     private func beginInteraction() {
@@ -1433,6 +1488,9 @@ private struct DialBezierRow: View {
                 .foregroundStyle(DialTheme.textLabel)
                 .focused($isFocused)
                 .onSubmit(commit)
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { commit() }
+                }
                 .onChange(of: Self.format(bezier)) { _, newValue in
                     guard !isFocused else { return }
                     draft = newValue
@@ -1444,19 +1502,9 @@ private struct DialBezierRow: View {
     }
 
     private func commit() {
-        let parts = draft.split(separator: ",").map { Double($0.trimmingCharacters(in: .whitespaces)) }
-        guard parts.count == 4,
-              let x1 = parts[0],
-              let y1 = parts[1],
-              let x2 = parts[2],
-              let y2 = parts[3] else {
-            draft = Self.format(bezier)
-            return
-        }
-
-        let next = DialKitBezierValue(x1: x1, y1: y1, x2: x2, y2: y2)
-        onChange(next)
+        let next = InspectorDraft.bezier(draft, fallback: bezier)
         draft = Self.format(next)
+        if next != bezier { onChange(next) }
     }
 
     private static func format(_ bezier: DialKitBezierValue) -> String {
@@ -1770,89 +1818,8 @@ private func copyTextToPasteboard(_ text: String) {
     #endif
 }
 
-private func copyInstructionText(for panel: DialKitPanelSnapshot) -> String {
-    let values = copyLines(for: panel.controls, indent: "")
-    guard !values.isEmpty else {
-        return panel.name
-    }
-
-    return ([panel.name] + values).joined(separator: "\n")
-}
-
-private func copyLines(for controls: [DialKitControlSnapshot], indent: String) -> [String] {
-    controls.flatMap { control -> [String] in
-        switch control.kind {
-        case let .group(_, children):
-            return ["\(indent)\(control.label):"] + copyLines(for: children, indent: "\(indent)  ")
-        case let .slider(value, _, _, _, unit):
-            return ["\(indent)\(control.label): \(formatted(value, step: 0.01, unit: unit))"]
-        case let .toggle(value):
-            return ["\(indent)\(control.label): \(value ? "On" : "Off")"]
-        case let .text(value, _), let .color(value), let .select(value, _):
-            return ["\(indent)\(control.label): \(value)"]
-        case let .spring(value):
-            return ["\(indent)\(control.label): \(copyDescription(for: value))"]
-        case let .transition(value):
-            return ["\(indent)\(control.label): \(copyDescription(for: value))"]
-        case .action:
-            return []
-        }
-    }
-}
-
-private func copyDescription(for spring: DialKitSpringValue) -> String {
-    switch spring {
-    case let .time(duration, bounce):
-        return "time(duration: \(formatted(duration, step: 0.01, unit: "s")), bounce: \(formatted(bounce, step: 0.01, unit: nil)))"
-    case let .physics(stiffness, damping, mass):
-        return "physics(stiffness: \(formatted(stiffness, step: 1, unit: nil)), damping: \(formatted(damping, step: 1, unit: nil)), mass: \(formatted(mass, step: 0.1, unit: nil)))"
-    }
-}
-
-private func copyDescription(for transition: DialKitTransitionValue) -> String {
-    switch transition {
-    case let .easing(duration, bezier):
-        let points = [bezier.x1, bezier.y1, bezier.x2, bezier.y2]
-            .map { formatted($0, step: 0.01, unit: nil) }
-            .joined(separator: ", ")
-        return "easing(duration: \(formatted(duration, step: 0.01, unit: "s")), bezier: \(points))"
-    case let .spring(spring):
-        return "spring(\(copyDescription(for: spring)))"
-    }
-}
-
 private func snapped(_ raw: Double, range: ClosedRange<Double>, step: Double) -> Double {
-    let clamped = min(max(raw, range.lowerBound), range.upperBound)
-    guard step > 0 else {
-        return clamped
-    }
-
-    let offset = clamped - range.lowerBound
-    let rounded = (offset / step).rounded() * step + range.lowerBound
-    return min(max(rounded, range.lowerBound), range.upperBound)
-}
-
-private func formatted(_ value: Double, step: Double, unit: String?) -> String {
-    let digits: Int
-    if step >= 1 {
-        digits = 0
-    } else if step >= 0.1 {
-        digits = 1
-    } else {
-        digits = 2
-    }
-
-    let formatted = value.formatted(.number.precision(.fractionLength(digits)))
-    guard let unit, !unit.isEmpty else {
-        return formatted
-    }
-
-    return "\(formatted)\(unit)"
-}
-
-private func isValidHexColor(_ value: String) -> Bool {
-    let pattern = "^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
-    return value.range(of: pattern, options: .regularExpression) != nil
+    DialNumber.round(raw, step: step, within: range)
 }
 
 private func color(from hex: String) -> Color {

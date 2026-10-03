@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import DialkitmacOSProtocol
 
 public protocol DialNumericValue: Comparable {
     var dialDoubleValue: Double { get }
@@ -256,33 +257,15 @@ package func dialIsValidHexColor(_ value: String) -> Bool {
 }
 
 package func dialStepPrecision(_ step: Double) -> Int {
-    let safeStep = abs(step)
-    guard safeStep > 0 else {
-        return 0
-    }
-
-    for precision in 0...6 {
-        let factor = pow(10.0, Double(precision))
-        let scaled = safeStep * factor
-        if abs(scaled.rounded() - scaled) < 0.000_000_1 {
-            return precision
-        }
-    }
-
-    return 6
+    DialNumber.precision(step)
 }
 
 package func dialRound(_ value: Double, step: Double, within range: ClosedRange<Double>) -> Double {
-    let safeStep = max(step, 0.000_001)
-    let stepped = ((value - range.lowerBound) / safeStep).rounded() * safeStep + range.lowerBound
-    let clamped = min(max(stepped, range.lowerBound), range.upperBound)
-    let precision = dialStepPrecision(safeStep)
-    return Double(String(format: "%0.*f", precision, clamped)) ?? clamped
+    DialNumber.round(value, step: step, within: range)
 }
 
 package func dialFormattedNumber(_ value: Double, step: Double) -> String {
-    let precision = dialStepPrecision(step)
-    return String(format: "%0.*f", precision, value)
+    DialNumber.format(value, step: step)
 }
 
 package func dialInferredStep(for range: ClosedRange<Double>) -> Double {

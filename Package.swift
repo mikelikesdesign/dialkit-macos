@@ -65,7 +65,8 @@ let package = Package(
         .executableTarget(
             name: "DialkitmacOSApp",
             dependencies: ["DialkitmacOSProtocol"],
-            path: "Sources/DialKitMacOSApp"
+            path: "Sources/DialKitMacOSApp",
+            resources: [.copy("Resources/AppIcon.icns")]
         ),
         .executableTarget(
             name: "DialkitmacOSCLI",
@@ -85,6 +86,16 @@ let package = Package(
             name: "DialkitmacOSInAppUITests",
             dependencies: ["DialkitmacOSInAppUI"],
             path: "Tests/DialKitInAppUITests"
+        ),
+        .testTarget(
+            name: "DialkitmacOSAppTests",
+            dependencies: ["DialkitmacOSApp", "DialkitmacOSAgent", "DialkitmacOSCore", "DialkitmacOSProtocol"],
+            path: "Tests/DialKitMacOSAppTests"
+        ),
+        .testTarget(
+            name: "DialkitmacOSAgentTests",
+            dependencies: ["DialkitmacOSAgent", "DialkitmacOSCore", "DialkitmacOSProtocol"],
+            path: "Tests/DialKitAgentTests"
         )
     ]
 )

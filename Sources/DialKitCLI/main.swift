@@ -79,7 +79,7 @@ private enum DialKitCLI {
         let appName = options.appName ?? options.targetName
 
         print("""
-        DialKit macOS package-only install preflight passed.
+        Dialkit macOS package-only install preflight passed.
 
         Project: \(options.projectPath)
         Target: \(options.targetName)
@@ -141,7 +141,7 @@ private enum DialKitCLI {
     }
 
     private static let help = """
-    DialKit macOS command line helper
+    Dialkit macOS command line helper
 
     Usage:
       swift run dialkit run
@@ -151,7 +151,7 @@ private enum DialKitCLI {
       run       Build and run the standalone macOS inspector with SwiftPM.
       install   Validate an Xcode project target and print the debug-only agent wiring.
 
-    No separate DialKit macOS.app download is required.
+    No separate Dialkit macOS.app download is required.
     """
 
     fileprivate static let installHelp = """

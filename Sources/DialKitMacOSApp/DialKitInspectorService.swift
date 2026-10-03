@@ -13,11 +13,17 @@ final class DialKitInspectorService: ObservableObject {
     private var listener: NWListener?
     private var connection: NWConnection?
     private var receiveBuffer = Data()
-    private let port: UInt16
+    @Published private(set) var listeningPort: UInt16?
+    private let port: UInt16?
 
-    init(port: UInt16 = DialKitConnectionDefaults.port) {
+    init(port: UInt16? = DialKitConnectionDefaults.port) {
         self.port = port
         startListening()
+    }
+
+    deinit {
+        listener?.cancel()
+        connection?.cancel()
     }
 
     func requestSnapshot() {
@@ -54,14 +60,28 @@ final class DialKitInspectorService: ObservableObject {
         }
 
         do {
-            guard let nwPort = NWEndpoint.Port(rawValue: port) else {
-                status = "Invalid port \(port)"
-                return
+            let nwPort: NWEndpoint.Port
+            if let port {
+                guard let validatedPort = NWEndpoint.Port(rawValue: port) else {
+                    status = "Invalid port \(port)"
+                    return
+                }
+                nwPort = validatedPort
+            } else {
+                nwPort = .any
             }
 
-            let listener = try NWListener(using: .tcp, on: nwPort)
+            // Bind to loopback only. The inspector is a local development tool and
+            // must not accept connections from other machines on the network.
+            let parameters = NWParameters.tcp
+            parameters.requiredLocalEndpoint = .hostPort(
+                host: NWEndpoint.Host(DialKitConnectionDefaults.host),
+                port: nwPort
+            )
+
+            let listener = try NWListener(using: parameters)
             self.listener = listener
-            status = "Listening on \(DialKitConnectionDefaults.host):\(port)"
+            status = "Starting listener"
 
             listener.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in
@@ -84,7 +104,8 @@ final class DialKitInspectorService: ObservableObject {
     private func handleListenerState(_ state: NWListener.State) {
         switch state {
         case .ready:
-            status = connection == nil ? "Listening on \(DialKitConnectionDefaults.host):\(port)" : status
+            listeningPort = listener?.port?.rawValue
+            status = connection == nil ? "Listening on \(DialKitConnectionDefaults.host):\(listeningPort ?? 0)" : status
         case let .failed(error):
             status = "Listener failed: \(error.localizedDescription)"
         default:
@@ -93,14 +114,20 @@ final class DialKitInspectorService: ObservableObject {
     }
 
     private func accept(_ newConnection: NWConnection) {
+        // Cancelling the previous connection delivers its .cancelled state and a
+        // failed receive asynchronously. Every handler below checks connection
+        // identity so those stale callbacks cannot clobber the new connection.
         connection?.cancel()
         connection = newConnection
+        snapshot = nil
+        lastLog = nil
         receiveBuffer.removeAll()
         status = "Connecting..."
 
-        newConnection.stateUpdateHandler = { [weak self] state in
+        newConnection.stateUpdateHandler = { [weak self, weak newConnection] state in
             Task { @MainActor in
-                self?.handleConnectionState(state)
+                guard let newConnection else { return }
+                self?.handleConnectionState(state, connection: newConnection)
             }
         }
 
@@ -108,17 +135,28 @@ final class DialKitInspectorService: ObservableObject {
         newConnection.start(queue: queue)
     }
 
-    private func handleConnectionState(_ state: NWConnection.State) {
+    private func handleConnectionState(_ state: NWConnection.State, connection: NWConnection) {
+        guard self.connection === connection else {
+            return
+        }
+
         switch state {
         case .ready:
             status = snapshot.map { "Connected to \($0.appName)" } ?? "Connected"
             requestSnapshot()
         case .failed, .cancelled:
-            status = "Waiting for app"
-            connection = nil
+            dropCurrentConnection()
         default:
             break
         }
+    }
+
+    private func dropCurrentConnection() {
+        connection?.cancel()
+        connection = nil
+        snapshot = nil
+        receiveBuffer.removeAll()
+        status = "Waiting for app"
     }
 
     private func receive(on connection: NWConnection) {
@@ -130,6 +168,11 @@ final class DialKitInspectorService: ObservableObject {
     }
 
     private func handleReceive(data: Data?, isComplete: Bool, error: NWError?, connection: NWConnection) {
+        guard self.connection === connection else {
+            // Stale callback from a connection that has already been replaced.
+            return
+        }
+
         if let data, !data.isEmpty {
             receiveBuffer.append(data)
 
@@ -147,9 +190,8 @@ final class DialKitInspectorService: ObservableObject {
             }
         }
 
-        guard error == nil, !isComplete, self.connection === connection else {
-            status = "Waiting for app"
-            self.connection = nil
+        guard error == nil, !isComplete else {
+            dropCurrentConnection()
             return
         }
 
