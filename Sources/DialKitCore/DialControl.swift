@@ -223,7 +223,14 @@ public struct DialControl<Model> {
                     model[keyPath: keyPath].dialDoubleValue
                 },
                 setter: { model, newValue in
-                    model[keyPath: keyPath] = Value(dialDoubleValue: newValue)
+                    let currentValue = model[keyPath: keyPath]
+                    // Preserve an in-range integer that already has this wire
+                    // value; adjacent large integers can share one Double.
+                    if range.contains(currentValue), currentValue.dialDoubleValue == newValue { return }
+                    let converted = Value(dialDoubleValue: newValue)
+                    // Large Int bounds can map to the same Double. Enforce the
+                    // original typed bounds after conversion as well.
+                    model[keyPath: keyPath] = min(max(converted, range.lowerBound), range.upperBound)
                 }
             )
         )

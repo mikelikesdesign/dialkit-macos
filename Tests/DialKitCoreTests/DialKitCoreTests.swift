@@ -19,6 +19,47 @@ final class DialKitCoreTests: XCTestCase {
         DialStore.shared.resetForTesting()
     }
 
+    func testIntegerConversionSaturatesAtRepresentableEndpoints() {
+        XCTAssertEqual(Int(dialDoubleValue: Double(Int.max)), Int.max)
+        XCTAssertEqual(Int(dialDoubleValue: Double(Int.min)), Int.min)
+        XCTAssertEqual(Int(dialDoubleValue: .greatestFiniteMagnitude), Int.max)
+        XCTAssertEqual(Int(dialDoubleValue: -.greatestFiniteMagnitude), Int.min)
+        XCTAssertEqual(Int(dialDoubleValue: .infinity), Int.max)
+        XCTAssertEqual(Int(dialDoubleValue: -.infinity), Int.min)
+        XCTAssertEqual(Int(dialDoubleValue: .nan), 0)
+        XCTAssertEqual(Int(dialDoubleValue: 4.6), 5)
+        XCTAssertEqual(Int(dialDoubleValue: -4.6), -5)
+    }
+
+    func testLargeIntegerSliderInitializationAndEditsKeepTypedBounds() {
+        struct Model: Codable, Equatable { var value: Int }
+        for range in [0...Int.max, Int.min...0, (Int.max - 1)...(Int.max - 1),
+                      Int.min...(Int.min + 1)] {
+            let panel = DialPanelState(name: "Large integer", initial: Model(value: range.upperBound), controls: [
+                .slider("value", keyPath: \.value, range: range, step: 1)
+            ])
+            XCTAssertEqual(panel.values.value, range.upperBound)
+            for endpoint in [range.lowerBound, range.upperBound] {
+                XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: panel.id, path: "value", value: .number(Double(endpoint))))
+                XCTAssertTrue(range.contains(panel.values.value))
+            }
+        }
+    }
+
+    func testZeroDurationModelModeSwitchProducesValidSpring() {
+        for duration in [0.0, 0.05, 0.7] {
+            let next = DialTransition.easing(duration: duration, bezier: .standard).switching(to: .simple)
+            XCTAssertEqual(next, .spring(.time(duration: duration == 0 ? 0.1 : duration, bounce: 0.2)))
+        }
+    }
+
+    func testPhysicsResolutionPreservesValuesBelowEditorBounds() {
+        let physics = DialSpring.physics(stiffness: 0.5, damping: 0, mass: 0.05).resolvedPhysics
+        XCTAssertEqual(physics, ResolvedSpringPhysics(stiffness: 0.5, damping: 0, mass: 0.05))
+        let invalid = DialSpring.physics(stiffness: .nan, damping: -.infinity, mass: 0).resolvedPhysics
+        XCTAssertEqual(invalid, ResolvedSpringPhysics(stiffness: 1, damping: 1, mass: 0.1))
+    }
+
     func testSliderNormalizationAndRemoteEditsPreserveOffsetRange() {
         struct OffsetModel: Codable, Equatable { var value = 0.05 }
         let state = DialPanelState(name: "Offset", initial: OffsetModel(), controls: [

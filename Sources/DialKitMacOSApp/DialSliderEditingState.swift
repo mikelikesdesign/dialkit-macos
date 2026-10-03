@@ -66,7 +66,13 @@ struct DialSliderEditingState {
 
     private func matches(_ expected: Double, _ actual: Double) -> Bool {
         if expected == actual { return true }
-        guard expected.isFinite, actual.isFinite, step.isFinite, step > 0 else { return false }
+        guard expected.isFinite, actual.isFinite, step.isFinite, step >= 0 else { return false }
+        if step == 0 {
+            // Continuous Float controls echo their exact Float conversion. Match
+            // that value rather than using a tolerance that could accept a nearby edit.
+            let converted = Float(expected)
+            return converted.isFinite && actual == Double(converted)
+        }
         // Float-backed models round the Double sent over the wire. Bound the
         // tolerance below a step so a delayed neighbouring value cannot clear it.
         let floatError = max(abs(expected), abs(actual)) * Double(Float.ulpOfOne)

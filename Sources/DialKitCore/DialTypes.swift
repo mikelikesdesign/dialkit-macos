@@ -35,7 +35,18 @@ extension Int: DialNumericValue {
     public var dialDoubleValue: Double { Double(self) }
 
     public init(dialDoubleValue: Double) {
-        self = Int(dialDoubleValue.rounded())
+        // Double(Int.max) rounds up beyond Int's representable range.
+        // Saturate before converting so endpoint edits cannot trap.
+        let rounded = dialDoubleValue.rounded()
+        if rounded.isNaN {
+            self = 0
+        } else if rounded >= Double(Int.max) {
+            self = Int.max
+        } else if rounded <= Double(Int.min) {
+            self = Int.min
+        } else {
+            self = Int(rounded)
+        }
     }
 }
 
@@ -105,21 +116,15 @@ public enum DialSpring: Equatable, Codable {
     }
 
     public var resolvedPhysics: ResolvedSpringPhysics {
+        let value: DialKitSpringValue
         switch self {
         case let .time(duration, bounce):
-            let clampedDuration = max(duration, 0.1)
-            let mass = 1.0
-            let stiffness = pow((2 * Double.pi) / clampedDuration, 2)
-            let dampingRatio = 1 - min(max(bounce, 0), 1)
-            let damping = 2 * dampingRatio * sqrt(stiffness * mass)
-            return ResolvedSpringPhysics(stiffness: stiffness, damping: damping, mass: mass)
+            value = .time(duration: duration, bounce: bounce)
         case let .physics(stiffness, damping, mass):
-            return ResolvedSpringPhysics(
-                stiffness: max(stiffness, 1),
-                damping: max(damping, 1),
-                mass: max(mass, 0.1)
-            )
+            value = .physics(stiffness: stiffness, damping: damping, mass: mass)
         }
+        let physics = value.resolvedPhysics
+        return ResolvedSpringPhysics(stiffness: physics.stiffness, damping: physics.damping, mass: physics.mass)
     }
 
     package var durationHint: Double {
@@ -187,7 +192,7 @@ public enum DialTransition: Equatable, Codable {
         case .simple:
             switch self {
             case let .easing(duration, _):
-                return .spring(.time(duration: duration, bounce: 0.2))
+                return .spring(.time(duration: DialMotionDefaults.springDuration(from: duration), bounce: 0.2))
             case let .spring(spring):
                 switch spring {
                 case let .time(duration, bounce):

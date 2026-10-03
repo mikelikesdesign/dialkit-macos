@@ -1590,7 +1590,7 @@ private func drawGrid(in size: CGSize, context: inout GraphicsContext) {
     }
 }
 
-private enum SpringMode: String, CaseIterable, Hashable {
+enum SpringMode: String, CaseIterable, Hashable {
     case simple
     case advanced
 
@@ -1604,7 +1604,7 @@ private enum SpringMode: String, CaseIterable, Hashable {
     }
 }
 
-private enum TransitionMode: String, CaseIterable, Hashable {
+enum TransitionMode: String, CaseIterable, Hashable {
     case easing
     case simple
     case advanced
@@ -1621,37 +1621,13 @@ private enum TransitionMode: String, CaseIterable, Hashable {
     }
 }
 
-private struct ResolvedSpringPhysics {
-    let stiffness: Double
-    let damping: Double
-    let mass: Double
-}
-
-private extension DialKitSpringValue {
+extension DialKitSpringValue {
     var mode: SpringMode {
         switch self {
         case .time:
             return .simple
         case .physics:
             return .advanced
-        }
-    }
-
-    var resolvedPhysics: ResolvedSpringPhysics {
-        switch self {
-        case let .time(duration, bounce):
-            let clampedDuration = max(duration, 0.1)
-            let mass = 1.0
-            let stiffness = pow((2 * Double.pi) / clampedDuration, 2)
-            let dampingRatio = 1 - min(max(bounce, 0), 1)
-            let damping = 2 * dampingRatio * sqrt(stiffness * mass)
-            return ResolvedSpringPhysics(stiffness: stiffness, damping: damping, mass: mass)
-        case let .physics(stiffness, damping, mass):
-            return ResolvedSpringPhysics(
-                stiffness: max(stiffness, 1),
-                damping: max(damping, 1),
-                mass: max(mass, 0.1)
-            )
         }
     }
 
@@ -1678,7 +1654,7 @@ private extension DialKitSpringValue {
     }
 }
 
-private extension DialKitTransitionValue {
+extension DialKitTransitionValue {
     var mode: TransitionMode {
         switch self {
         case .easing:
@@ -1700,7 +1676,7 @@ private extension DialKitTransitionValue {
         case .simple:
             switch self {
             case let .easing(duration, _):
-                return .spring(.time(duration: duration, bounce: 0.2))
+                return .spring(.time(duration: DialMotionDefaults.springDuration(from: duration), bounce: 0.2))
             case let .spring(spring):
                 return .spring(spring.switching(to: .simple))
             }

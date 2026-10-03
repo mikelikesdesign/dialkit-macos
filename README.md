@@ -310,6 +310,8 @@ struct ControlsModel: Codable, Equatable {
 
 Groups organize controls and prefix their paths (for example, `motion.spring`); they do not change key paths, which still refer to the root model. A path already containing a dot is treated as an explicit path. Slider edits are clamped to the range and snapped to the step; set `step: 1` for integer controls.
 
+Slider values travel as `Double`, so very large integers may not have single-unit precision.
+
 ### Actions
 
 Action controls let the inspector trigger app logic that is not a simple value change. Nested action paths are dot-separated, so `action("shuffle")` inside `group("actions")` arrives as `actions.shuffle`. In this example, provide your own `shuffleCard()` and `resetLayout()` functions. Keep the resulting panel alive, and use a weak capture if its action closure refers back to its owner.
