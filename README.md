@@ -451,7 +451,3 @@ swift test
 ```
 
 Use the demo app to check live editing in the Simulator or Xcode Previews after integration or inspector changes.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
