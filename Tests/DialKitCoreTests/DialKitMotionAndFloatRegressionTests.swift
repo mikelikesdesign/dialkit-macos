@@ -60,6 +60,7 @@ final class DialKitMotionAndFloatRegressionTests: XCTestCase {
         XCTAssertEqual(state.values.value, Float(0.7))
         let panel = try XCTUnwrap(DialStore.shared.remoteSnapshot(appName: "Float").panels.first { $0.id == state.id })
         guard case let .slider(value, _, _, step, _) = panel.controls[0].kind else { return XCTFail("Missing remote slider") }
+        XCTAssertEqual(panel.controls[0].numericType, .float)
         XCTAssertEqual(DialNumber.format(value, step: step), "0.7")
     }
 

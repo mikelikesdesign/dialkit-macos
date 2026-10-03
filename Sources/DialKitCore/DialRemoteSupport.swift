@@ -28,10 +28,14 @@ package extension AnyDialPanelBox {
 
 private extension DialKitControlSnapshot {
     init(resolved control: DialResolvedControl) {
+        let numericType: DialKitSliderValueType?
+        if case let .slider(slider) = control.kind { numericType = slider.numericType }
+        else { numericType = nil }
         self.init(
             path: control.path,
             label: control.label,
-            kind: DialKitControlKind(resolved: control.kind)
+            kind: DialKitControlKind(resolved: control.kind),
+            numericType: numericType
         )
     }
 }

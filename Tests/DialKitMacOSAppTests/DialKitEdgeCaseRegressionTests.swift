@@ -13,7 +13,7 @@ final class DialKitEdgeCaseRegressionTests: XCTestCase {
         panel.savePreset(named: "Before")
         let presetID = try XCTUnwrap(panel.activePresetID)
         panel.clearActivePreset()
-        var editing = DialSliderEditingState()
+        var editing = DialSliderEditingState(numericType: .float)
         XCTAssertTrue(editing.commit(0.3, remote: 0, step: 0))
         XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: panel.id, path: "value", value: .number(0.3)))
         let actual = Double(panel.values.value)
@@ -30,7 +30,7 @@ final class DialKitEdgeCaseRegressionTests: XCTestCase {
 
     func testContinuousFloatDragRejectsStaleEchoAndAcknowledgesOnMouseUp() throws {
         let panel = makeFloatPanel()
-        var editing = DialSliderEditingState()
+        var editing = DialSliderEditingState(numericType: .float)
         editing.begin(remote: 0)
         let first = try XCTUnwrap(editing.update(translation: 30, width: 100, range: 0...1, step: 0))
         let final = try XCTUnwrap(editing.update(translation: 70, width: 100, range: 0...1, step: 0))
@@ -49,7 +49,16 @@ final class DialKitEdgeCaseRegressionTests: XCTestCase {
         XCTAssertEqual(editing.pendingValue, 0.3)
         editing.receive(0.3)
         XCTAssertNil(editing.pendingValue)
-        // A subnormal Float may round to zero; that is still a real acknowledgement.
+        // A Double subnormal must remain pending until its exact value arrives.
+        XCTAssertTrue(editing.commit(1e-50, remote: 0.1, step: 0))
+        editing.receive(0)
+        XCTAssertEqual(editing.pendingValue, 1e-50)
+        editing.receive(1e-50)
+        XCTAssertNil(editing.pendingValue)
+    }
+
+    func testContinuousFloatSubnormalAcknowledgesItsRoundedZero() {
+        var editing = DialSliderEditingState(numericType: .float)
         XCTAssertTrue(editing.commit(1e-50, remote: 0.1, step: 0))
         editing.receive(0)
         XCTAssertNil(editing.pendingValue)

@@ -9,11 +9,21 @@ struct DialSliderEditingState {
     private(set) var pendingValue: Double?
     private var step = 0.0
     private var pendingAcknowledged = false
+    private var numericType: DialKitSliderValueType
+
+    init(numericType: DialKitSliderValueType = .double) {
+        self.numericType = numericType
+    }
 
     func displayedValue(remote: Double) -> Double { pendingValue ?? remote }
 
     mutating func resetForConfigurationChange() {
-        self = Self()
+        self = Self(numericType: numericType)
+    }
+
+    mutating func configure(numericType: DialKitSliderValueType) {
+        guard self.numericType != numericType else { return }
+        self = Self(numericType: numericType)
     }
 
     mutating func begin(remote: Double) {
@@ -67,15 +77,12 @@ struct DialSliderEditingState {
     private func matches(_ expected: Double, _ actual: Double) -> Bool {
         if expected == actual { return true }
         guard expected.isFinite, actual.isFinite, step.isFinite, step >= 0 else { return false }
-        if step == 0 {
-            // Continuous Float controls echo their exact Float conversion. Match
-            // that value rather than using a tolerance that could accept a nearby edit.
-            let converted = Float(expected)
-            return converted.isFinite && actual == Double(converted)
-        }
-        // Float-backed models round the Double sent over the wire. Bound the
-        // tolerance below a step so a delayed neighbouring value cannot clear it.
-        let floatError = max(abs(expected), abs(actual)) * Double(Float.ulpOfOne)
-        return abs(expected - actual) <= min(step / 4, floatError)
+        guard numericType == .float else { return false }
+        let converted = Float(expected)
+        guard converted.isFinite else { return false }
+        // Match the app's actual Float wire representation, even when the step
+        // is smaller than a Float ULP. Double controls always require equality.
+        let echoed = step > 0 ? Double(String(converted)) : Double(converted)
+        return actual == echoed
     }
 }

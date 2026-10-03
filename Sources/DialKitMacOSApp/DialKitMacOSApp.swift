@@ -446,7 +446,8 @@ private struct ControlInspectorView: View {
                 value: value,
                 range: lowerBound...upperBound,
                 step: step,
-                unit: unit
+                unit: unit,
+                numericType: control.numericType ?? .double
             ) {
                 service.setControlValue(panelID: panelID, path: control.path, value: .number($0))
             }
@@ -973,6 +974,7 @@ private struct DialSliderRow: View {
     let range: ClosedRange<Double>
     let step: Double
     let unit: String?
+    var numericType: DialKitSliderValueType = .double
     let onChange: (Double) -> Void
 
     @State private var interaction = DialSliderEditingState()
@@ -1032,6 +1034,7 @@ private struct DialSliderRow: View {
         }
         .frame(height: 36)
         .onAppear {
+            interaction.configure(numericType: numericType)
             draftValue = formatted(displayedValue, step: step, unit: nil)
         }
         .onChange(of: value) { _, newValue in
@@ -1044,6 +1047,10 @@ private struct DialSliderRow: View {
         }
         .onChange(of: range) { _, _ in resetForConfigurationChange() }
         .onChange(of: step) { _, _ in resetForConfigurationChange() }
+        .onChange(of: numericType) { _, newValue in
+            interaction.configure(numericType: newValue)
+            resetForConfigurationChange()
+        }
     }
 
     @ViewBuilder

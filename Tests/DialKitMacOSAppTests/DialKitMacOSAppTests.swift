@@ -185,14 +185,14 @@ final class DialKitMacOSAppTests: XCTestCase {
         let panel = DialPanelState(name: "Float", initial: FloatModel(), controls: [
             .slider("value", keyPath: \.value, range: Float(0)...Float(1), step: Float(0.1))
         ])
-        let step = Double(Float(0.1))
-        var editing = DialSliderEditingState()
+        let step = 0.1
+        var editing = DialSliderEditingState(numericType: .float)
         editing.begin(remote: 0)
         let sent = try XCTUnwrap(editing.update(translation: 30, width: 100, range: 0...1, step: step))
         editing.end(remote: 0)
         XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: panel.id, path: "value", value: .number(sent)))
-        let echoed = Double(panel.values.value)
-        XCTAssertNotEqual(sent, echoed, "Exercise a real Float conversion, not an exact Double echo")
+        let echoed = Double(String(panel.values.value))!
+        XCTAssertNotEqual(sent, Double(panel.values.value), "Exercise a real Float conversion, not an exact Double model")
         editing.receive(echoed)
         XCTAssertNil(editing.pendingValue)
         XCTAssertEqual(editing.displayedValue(remote: echoed), echoed)
@@ -200,11 +200,12 @@ final class DialKitMacOSAppTests: XCTestCase {
         let typed = DialNumber.round(0.7, step: step, within: 0...1)
         XCTAssertTrue(editing.commit(typed, remote: echoed, step: step))
         XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: panel.id, path: "value", value: .number(typed)))
-        editing.receive(Double(panel.values.value))
+        editing.receive(Double(String(panel.values.value))!)
         XCTAssertNil(editing.pendingValue)
         panel.values.value = 0.8
-        editing.receive(Double(panel.values.value))
-        XCTAssertEqual(editing.displayedValue(remote: Double(panel.values.value)), Double(panel.values.value))
+        let updated = Double(String(panel.values.value))!
+        editing.receive(updated)
+        XCTAssertEqual(editing.displayedValue(remote: updated), updated)
     }
 
     func testFloatToleranceDoesNotAcknowledgeNeighbouringFineDoubleStep() {

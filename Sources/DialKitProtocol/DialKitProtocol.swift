@@ -56,14 +56,22 @@ public struct DialKitControlSnapshot: Codable, Equatable, Identifiable {
     public var path: String
     public var label: String
     public var kind: DialKitControlKind
+    /// Older snapshots omit this field. Missing metadata uses exact Double matching.
+    public var numericType: DialKitSliderValueType?
 
     public var id: String { path }
 
-    public init(path: String, label: String, kind: DialKitControlKind) {
+    public init(path: String, label: String, kind: DialKitControlKind, numericType: DialKitSliderValueType? = nil) {
         self.path = path
         self.label = label
         self.kind = kind
+        self.numericType = numericType
     }
+}
+
+public enum DialKitSliderValueType: String, Codable {
+    case double
+    case float
 }
 
 public indirect enum DialKitControlKind: Codable, Equatable {

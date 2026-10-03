@@ -38,13 +38,15 @@ package struct DialResolvedSlider {
     package let range: ClosedRange<Double>
     package let step: Double
     package let unit: String?
+    package let numericType: DialKitSliderValueType
     package let get: () -> Double
     package let set: (Double) -> Void
 
-    package init(range: ClosedRange<Double>, step: Double, unit: String?, get: @escaping () -> Double, set: @escaping (Double) -> Void) {
+    package init(range: ClosedRange<Double>, step: Double, unit: String?, numericType: DialKitSliderValueType = .double, get: @escaping () -> Double, set: @escaping (Double) -> Void) {
         self.range = range
         self.step = step
         self.unit = unit
+        self.numericType = numericType
         self.get = get
         self.set = set
     }
@@ -139,6 +141,7 @@ package indirect enum DialControlNode<Model> {
         range: ClosedRange<Double>,
         step: Double,
         unit: String?,
+        numericType: DialKitSliderValueType,
         getter: (Model) -> Double,
         setter: (inout Model, Double) -> Void
     )
@@ -227,6 +230,7 @@ public struct DialControl<Model> {
                 range: doubleRange,
                 step: doubleStep,
                 unit: unit,
+                numericType: Value.self == Float.self ? .float : .double,
                 getter: { model in
                     doubleStep > 0 ? decimalValue(model[keyPath: keyPath]) : model[keyPath: keyPath].dialDoubleValue
                 },
@@ -379,7 +383,7 @@ public struct DialControl<Model> {
 package extension DialControlNode where Model: Codable & Equatable {
     func normalize(current: inout Model, fallback: Model) {
         switch self {
-        case let .slider(_, _, range, step, _, getter, setter):
+        case let .slider(_, _, range, step, _, _, getter, setter):
             let currentValue = getter(current)
             setter(&current, dialRound(currentValue, step: step, within: range))
         case .toggle:
@@ -430,7 +434,7 @@ package extension DialControlNode where Model: Codable & Equatable {
 
     func resolve(state: DialPanelState<Model>, prefix: String = "") -> [DialResolvedControl] {
         switch self {
-        case let .slider(path, label, range, step, unit, getter, setter):
+        case let .slider(path, label, range, step, unit, numericType, getter, setter):
             let resolvedPath = dialResolvedPath(prefix: prefix, path: path)
             return [
                 DialResolvedControl(
@@ -441,6 +445,7 @@ package extension DialControlNode where Model: Codable & Equatable {
                             range: range,
                             step: step,
                             unit: unit,
+                            numericType: numericType,
                             get: { getter(state.values) },
                             set: { newValue in
                                 var updated = dialCopyModel(state.values)

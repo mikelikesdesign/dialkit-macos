@@ -5,17 +5,7 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     public let id: UUID
 
     @Published public var name: String
-    @Published public var values: Model {
-        didSet {
-            guard !isApplyingInternalChange else { return }
-            var normalized = dialCopyModel(values)
-            for control in controls {
-                control.node.normalizeMotion(current: &normalized, fallback: oldValue)
-            }
-            if normalized != values { applyInternalValueChange(normalized) }
-            synchronizeValues()
-        }
-    }
+    @DialPanelValues public var values: Model
     @Published public private(set) var presets: [DialPreset<Model>]
     @Published public private(set) var activePresetID: UUID?
 
@@ -40,7 +30,7 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
         for control in controls {
             control.node.normalize(current: &normalizedInitial, fallback: initial)
         }
-        self.values = normalizedInitial
+        self._values = DialPanelValues(wrappedValue: normalizedInitial)
         self.baseValues = dialCopyModel(normalizedInitial)
         self.presets = []
         self.activePresetID = nil
@@ -171,9 +161,61 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
         }
     }
 
+    fileprivate func normalizedValues(_ newValue: Model) -> Model {
+        var normalized = dialCopyModel(newValue)
+        for control in controls {
+            control.node.normalizeMotion(current: &normalized, fallback: values)
+        }
+        return normalized
+    }
+
+    fileprivate func valuesDidChange() {
+        guard !isApplyingInternalChange else { return }
+        synchronizeValues()
+    }
+
     private func applyInternalValueChange(_ newValue: Model) {
         isApplyingInternalChange = true
         values = newValue
         isApplyingInternalChange = false
+    }
+}
+
+/// Publishes panel values only after motion validation. The projection retains
+/// the same `Published<Model>.Publisher` API used by UIKit and AppKit clients.
+@propertyWrapper
+public struct DialPanelValues<Model: Codable & Equatable> {
+    private final class Storage {
+        @Published var value: Model
+
+        init(_ value: Model) { self.value = value }
+    }
+
+    private let storage: Storage
+
+    public init(wrappedValue: Model) {
+        self.storage = Storage(wrappedValue)
+    }
+
+    @available(*, unavailable, message: "DialPanelValues is managed by DialPanelState.")
+    public var wrappedValue: Model {
+        get { fatalError() }
+        set { fatalError() }
+    }
+
+    public var projectedValue: Published<Model>.Publisher { storage.$value }
+
+    public static subscript(
+        _enclosingInstance state: DialPanelState<Model>,
+        wrapped wrappedKeyPath: ReferenceWritableKeyPath<DialPanelState<Model>, Model>,
+        storage storageKeyPath: ReferenceWritableKeyPath<DialPanelState<Model>, Self>
+    ) -> Model {
+        get { state[keyPath: storageKeyPath].storage.value }
+        set {
+            let normalized = state.normalizedValues(newValue)
+            state.objectWillChange.send()
+            state[keyPath: storageKeyPath].storage.value = normalized
+            state.valuesDidChange()
+        }
     }
 }
