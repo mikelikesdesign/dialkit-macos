@@ -121,6 +121,56 @@ final class DialKitMacOSAppTests: XCTestCase {
         XCTAssertEqual(editing.displayedValue(remote: 40), 40)
     }
 
+    func testIntegerDefaultStepProducesRepresentableEdits() throws {
+        struct IntegerModel: Codable, Equatable { var count = 0 }
+        let panel = DialPanelState(name: "Integer", initial: IntegerModel(), controls: [
+            .slider("count", keyPath: \.count, range: 0...10)
+        ])
+        let control = try XCTUnwrap(DialStore.shared.remoteSnapshot(appName: "Test")
+            .panels.first { $0.id == panel.id }?.controls.first)
+        guard case let .slider(value, lower, upper, step, _) = control.kind else {
+            return XCTFail("Missing slider")
+        }
+        XCTAssertEqual(step, 1)
+        var editing = DialSliderEditingState()
+        editing.begin(remote: value)
+        XCTAssertNil(editing.update(translation: 3, width: 100, range: lower...upper, step: step))
+        for translation in stride(from: 10.0, through: 100.0, by: 10) {
+            let sent = try XCTUnwrap(editing.update(translation: translation, width: 100, range: lower...upper, step: step))
+            XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: panel.id, path: "count", value: .number(sent)))
+            XCTAssertEqual(sent, Double(panel.values.count))
+            editing.receive(Double(panel.values.count))
+        }
+        editing.end(remote: Double(panel.values.count))
+        XCTAssertNil(editing.pendingValue)
+    }
+
+    func testAcknowledgementDuringDragSurvivesNewerAppValues() {
+        var editing = DialSliderEditingState()
+        editing.begin(remote: 20)
+        XCTAssertEqual(editing.update(translation: 30, width: 100, range: 0...100, step: 1), 50)
+        editing.receive(50)
+        editing.receive(70)
+        XCTAssertEqual(editing.displayedValue(remote: 70), 50, "The pointer owns the display until mouse-up")
+        editing.end(remote: 70)
+        XCTAssertNil(editing.pendingValue)
+        XCTAssertEqual(editing.displayedValue(remote: 70), 70)
+        editing.receive(80)
+        XCTAssertEqual(editing.displayedValue(remote: 80), 80)
+    }
+
+    func testNewDragValueRequiresItsOwnAcknowledgement() {
+        var editing = DialSliderEditingState()
+        editing.begin(remote: 20)
+        XCTAssertEqual(editing.update(translation: 30, width: 100, range: 0...100, step: 1), 50)
+        editing.receive(50)
+        XCTAssertEqual(editing.update(translation: 40, width: 100, range: 0...100, step: 1), 60)
+        editing.end(remote: 50)
+        XCTAssertEqual(editing.pendingValue, 60)
+        editing.receive(60)
+        XCTAssertNil(editing.pendingValue)
+    }
+
     func testRevertingToRemoteValueStillSendsOverAnInFlightEdit() {
         var editing = DialSliderEditingState()
         XCTAssertTrue(editing.commit(30, remote: 20, step: 1))

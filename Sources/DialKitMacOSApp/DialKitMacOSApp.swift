@@ -296,7 +296,9 @@ private struct PanelControlsView: View {
     private var toolbar: some View {
         HStack(spacing: 6) {
             Button {
-                service.savePreset(panelID: panel.id, name: panel.nextPresetName)
+                // Resolve the automatic name in the app so rapid saves cannot
+                // reuse a name from a snapshot that is still in flight.
+                service.savePreset(panelID: panel.id, name: "")
             } label: {
                 Image(systemName: "slider.horizontal.below.square.and.square.filled")
                     .font(.system(size: 14, weight: .semibold))
@@ -1480,23 +1482,12 @@ private struct SpringVisualization: View {
         let physics = spring.resolvedPhysics
         let steps = 100
         let duration = 2.0
-        let dt = duration / Double(steps)
-
-        var position = 0.0
-        var velocity = 0.0
-        var rawValues: [(time: Double, value: Double)] = []
-
-        for index in 0...steps {
-            let time = Double(index) * dt
-            rawValues.append((time: time, value: position))
-
-            let target = 1.0
-            let springForce = -physics.stiffness * (position - target)
-            let dampingForce = -physics.damping * velocity
-            let acceleration = (springForce + dampingForce) / physics.mass
-
-            velocity += acceleration * dt
-            position += velocity * dt
+        let rawValues = (0...steps).map { index in
+            let time = Double(index) * duration / Double(steps)
+            return (time: time, value: SpringResponse.position(
+                at: time, stiffness: physics.stiffness,
+                damping: physics.damping, mass: physics.mass
+            ))
         }
 
         let values = rawValues.map(\.value)

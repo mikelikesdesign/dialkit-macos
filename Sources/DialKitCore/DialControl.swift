@@ -207,7 +207,11 @@ public struct DialControl<Model> {
         unit: String? = nil
     ) -> DialControl<Model> {
         let doubleRange = range.lowerBound.dialDoubleValue...range.upperBound.dialDoubleValue
-        let doubleStep = step?.dialDoubleValue ?? dialInferredStep(for: doubleRange)
+        var doubleStep = step?.dialDoubleValue ?? dialInferredStep(for: doubleRange)
+        if Value.self == Int.self {
+            // Integer models cannot acknowledge fractional slider values.
+            doubleStep = max(1, doubleStep)
+        }
         return DialControl<Model>(
             node: .slider(
                 path: path,

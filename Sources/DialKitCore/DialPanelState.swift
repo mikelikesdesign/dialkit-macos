@@ -138,7 +138,12 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     }
 
     package var nextPresetName: String {
-        "Version \(presets.count + 2)"
+        let names = Set(presets.map(\.name))
+        var version = presets.count + 2
+        while names.contains("Version \(version)") {
+            version += 1
+        }
+        return "Version \(version)"
     }
 
     package var presetSummaries: [DialPresetSummary] {

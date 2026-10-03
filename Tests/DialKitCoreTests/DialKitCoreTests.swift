@@ -31,6 +31,42 @@ final class DialKitCoreTests: XCTestCase {
         }
     }
 
+    func testIntegerStepInferenceAndExplicitSteps() {
+        struct Model: Codable, Equatable { var count = 0 }
+        for (range, step, expected) in [
+            (0...1, nil, 1.0), (-5...5, nil, 1.0), (0...1000, nil, 10.0),
+            (0...10, 2, 2.0), (0...10, 0, 1.0)
+        ] as [(ClosedRange<Int>, Int?, Double)] {
+            let panel = DialPanelState(name: "Integer", initial: Model(), controls: [
+                .slider("count", keyPath: \.count, range: range, step: step)
+            ])
+            guard case let .slider(slider) = panel.resolvedControls().first?.kind else {
+                return XCTFail("Missing slider")
+            }
+            XCTAssertEqual(slider.step, expected)
+        }
+    }
+
+    func testAutomaticPresetNamesStayUniqueAfterDeletionAndCustomNames() throws {
+        let panel = makeState()
+        panel.savePreset(named: "")
+        panel.savePreset(named: "")
+        XCTAssertEqual(panel.presets.map(\.name), ["Version 2", "Version 3"])
+        panel.deletePreset(id: try XCTUnwrap(panel.presets.first?.id))
+        XCTAssertEqual(panel.nextPresetName, "Version 4")
+        panel.savePreset(named: "Version 4")
+        XCTAssertEqual(panel.nextPresetName, "Version 5")
+        panel.savePreset(named: "")
+        XCTAssertEqual(panel.presets.map(\.name), ["Version 3", "Version 4", "Version 5"])
+    }
+
+    func testConsecutiveRemoteAutomaticSavesResolveFreshNames() {
+        let panel = makeState()
+        XCTAssertTrue(DialStore.shared.saveRemotePreset(panelID: panel.id, name: ""))
+        XCTAssertTrue(DialStore.shared.saveRemotePreset(panelID: panel.id, name: ""))
+        XCTAssertEqual(panel.presets.map(\.name), ["Version 2", "Version 3"])
+    }
+
     func testRoundingClampsAfterSnappingAndPreservesFractionalBounds() {
         XCTAssertEqual(dialRound(0.26, step: 0.1, within: 0.05...0.26), 0.25)
         XCTAssertEqual(dialRound(0.32, step: 0.1, within: 0.05...0.32), 0.32)

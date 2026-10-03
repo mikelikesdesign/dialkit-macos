@@ -8,6 +8,7 @@ struct DialSliderEditingState {
     private(set) var startValue: Double?
     private(set) var pendingValue: Double?
     private var step = 0.0
+    private var pendingAcknowledged = false
 
     func displayedValue(remote: Double) -> Double { pendingValue ?? remote }
 
@@ -24,6 +25,7 @@ struct DialSliderEditingState {
         let next = DialNumber.round(raw, step: step, within: range)
         guard next != (pendingValue ?? startValue) else { return nil }
         pendingValue = next
+        pendingAcknowledged = false
         return next
     }
 
@@ -34,20 +36,28 @@ struct DialSliderEditingState {
         self.step = step
         let hadPendingEdit = pendingValue != nil
         pendingValue = matches(value, remote) ? nil : value
+        pendingAcknowledged = false
         // Still send a revert when an earlier edit is in flight.
         return hadPendingEdit || pendingValue != nil
     }
 
     mutating func receive(_ value: Double) {
-        if !isDragging, let pendingValue, matches(pendingValue, value) {
-            self.pendingValue = nil
-        }
+        guard let pendingValue, matches(pendingValue, value) else { return }
+        // Keep the pointer's value visible until mouse-up, but remember the
+        // acknowledgement even if the app sends newer values during the drag.
+        pendingAcknowledged = isDragging
+        if !isDragging { self.pendingValue = nil }
     }
 
     mutating func end(remote: Double) {
         isDragging = false
         startValue = nil
-        receive(remote)
+        if pendingAcknowledged {
+            pendingValue = nil
+            pendingAcknowledged = false
+        } else {
+            receive(remote)
+        }
     }
 
     private func matches(_ expected: Double, _ actual: Double) -> Bool {
