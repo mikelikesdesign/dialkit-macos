@@ -67,10 +67,8 @@ private enum DialKitCLI {
             throw CLIError("Expected an .xcodeproj bundle with project.pbxproj: \(options.projectPath)")
         }
 
-        let pbxproj = try String(contentsOf: pbxprojURL, encoding: .utf8)
-        guard pbxproj.contains("name = \(options.targetName);")
-            || pbxproj.contains("productName = \(options.targetName);")
-            || pbxproj.contains("\"\(options.targetName)\"") else {
+        let targets = try DialProjectTargets.names(in: Data(contentsOf: pbxprojURL))
+        guard targets.contains(options.targetName) else {
             throw CLIError("Could not find target named \(options.targetName) in \(options.projectPath)")
         }
     }

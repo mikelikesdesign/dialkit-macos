@@ -20,6 +20,10 @@ package extension AnyDialPanelBox {
     func triggerRemoteAction(path: String) -> Bool {
         performRemoteAction(in: controls, path: path)
     }
+
+    func setRemoteMotionComponent(path: String, component: DialKitMotionComponent) -> Bool {
+        applyMotionComponent(in: controls, path: path, component: component)
+    }
 }
 
 private extension DialKitControlSnapshot {
@@ -170,14 +174,39 @@ private func setRemoteControlValue(control: DialResolvedControl, value: DialKitC
         select.set(string)
         return true
     case let (.spring(spring), .spring(value)):
+        guard value.isValid else { return false }
         spring.set(DialSpring(value))
         return true
     case let (.transition(transition), .transition(value)):
+        guard value.isValid else { return false }
         transition.set(DialTransition(value))
         return true
     default:
         return false
     }
+}
+
+private func applyMotionComponent(in controls: [DialResolvedControl], path: String, component: DialKitMotionComponent) -> Bool {
+    for control in controls {
+        if control.path == path {
+            switch control.kind {
+            case let .spring(spring):
+                guard let next = component.applying(to: DialKitSpringValue(spring.get())) else { return false }
+                spring.set(DialSpring(next))
+                return true
+            case let .transition(transition):
+                guard let next = component.applying(to: DialKitTransitionValue(transition.get())) else { return false }
+                transition.set(DialTransition(next))
+                return true
+            default: return false
+            }
+        }
+        if case let .group(group) = control.kind,
+           applyMotionComponent(in: group.children, path: path, component: component) {
+            return true
+        }
+    }
+    return false
 }
 
 private func performRemoteAction(in controls: [DialResolvedControl], path: String) -> Bool {

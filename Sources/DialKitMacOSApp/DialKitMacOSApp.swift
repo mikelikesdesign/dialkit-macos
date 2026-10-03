@@ -471,7 +471,10 @@ private struct ControlInspectorView: View {
                 title: control.label,
                 value: value,
                 isExpanded: expansionBinding(control.id, true),
-                dividerVisibility: dividerVisibility
+                dividerVisibility: dividerVisibility,
+                onComponentChange: {
+                    service.setMotionComponent(panelID: panelID, path: control.path, component: $0)
+                }
             ) {
                 service.setControlValue(panelID: panelID, path: control.path, value: .spring($0))
             }
@@ -480,7 +483,10 @@ private struct ControlInspectorView: View {
                 title: control.label,
                 value: value,
                 isExpanded: expansionBinding(control.id, true),
-                dividerVisibility: dividerVisibility
+                dividerVisibility: dividerVisibility,
+                onComponentChange: {
+                    service.setMotionComponent(panelID: panelID, path: control.path, component: $0)
+                }
             ) {
                 service.setControlValue(panelID: panelID, path: control.path, value: .transition($0))
             }
@@ -1010,6 +1016,8 @@ private struct DialSliderRow: View {
 
             draftValue = formatted(displayedValue, step: step, unit: nil)
         }
+        .onChange(of: range) { _, _ in resetForConfigurationChange() }
+        .onChange(of: step) { _, _ in resetForConfigurationChange() }
     }
 
     @ViewBuilder
@@ -1024,6 +1032,10 @@ private struct DialSliderRow: View {
                     },
                     onBlur: {
                         commitDraftValue()
+                        isValueEditing = false
+                    },
+                    onCancel: {
+                        draftValue = formatted(displayedValue, step: step, unit: nil)
                         isValueEditing = false
                     }
                 )
@@ -1104,13 +1116,20 @@ private struct DialSliderRow: View {
         DialNumber.round(rawValue, step: step, within: range)
     }
 
+    private func resetForConfigurationChange() {
+        interaction.resetForConfigurationChange()
+        draftValue = formatted(value, step: step, unit: nil)
+        isValueEditing = false
+    }
+
 }
 
 #if canImport(AppKit)
-private struct DialInlineNumberTextField: NSViewRepresentable {
+struct DialInlineNumberTextField: NSViewRepresentable {
     @Binding var text: String
     let onCommit: () -> Void
     let onBlur: () -> Void
+    let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -1159,6 +1178,7 @@ private struct DialInlineNumberTextField: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
+        private enum FinishAction { case commit, blur, cancel }
         var parent: DialInlineNumberTextField
         private var clickAwayMonitor: Any?
         fileprivate var isFinishing = false
@@ -1181,7 +1201,7 @@ private struct DialInlineNumberTextField: NSViewRepresentable {
                 }
 
                 guard event.window === textField.window else {
-                    self.finishEditing(text: textField.stringValue, commit: false)
+                    self.finishEditing(text: textField.stringValue, action: .blur)
                     return event
                 }
 
@@ -1190,7 +1210,7 @@ private struct DialInlineNumberTextField: NSViewRepresentable {
                     return event
                 }
 
-                self.finishEditing(text: textField.stringValue, commit: false)
+                self.finishEditing(text: textField.stringValue, action: .blur)
                 textField.window?.makeFirstResponder(nil)
                 return event
             }
@@ -1216,7 +1236,7 @@ private struct DialInlineNumberTextField: NSViewRepresentable {
                 return
             }
 
-            finishEditing(text: textField.stringValue, commit: false)
+            finishEditing(text: textField.stringValue, action: .blur)
         }
 
         func control(
@@ -1226,28 +1246,31 @@ private struct DialInlineNumberTextField: NSViewRepresentable {
         ) -> Bool {
             switch commandSelector {
             case #selector(NSResponder.insertNewline(_:)):
-                finishEditing(text: textView.string, commit: true)
+                finishEditing(text: textView.string, action: .commit)
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
-                finishEditing(text: textView.string, commit: false)
+                finishEditing(text: textView.string, action: .cancel)
                 return true
             default:
                 return false
             }
         }
 
-        private func finishEditing(text: String, commit: Bool) {
+        private func finishEditing(text: String, action: FinishAction) {
             guard !isFinishing else {
                 return
             }
 
             isFinishing = true
-            parent.text = text
-
-            if commit {
+            switch action {
+            case .commit:
+                parent.text = text
                 parent.onCommit()
-            } else {
+            case .blur:
+                parent.text = text
                 parent.onBlur()
+            case .cancel:
+                parent.onCancel()
             }
 
             removeClickAwayMonitor()
@@ -1283,6 +1306,7 @@ private struct DialSpringControl: View {
     let value: DialKitSpringValue
     @Binding var isExpanded: Bool
     let dividerVisibility: DialSectionDividerVisibility
+    let onComponentChange: (DialKitMotionComponent) -> Void
     let onChange: (DialKitSpringValue) -> Void
 
     var body: some View {
@@ -1306,20 +1330,20 @@ private struct DialSpringControl: View {
             switch value {
             case let .time(duration, bounce):
                 DialSliderRow(title: "Duration", value: duration, range: 0.1...1, step: 0.05, unit: "s") {
-                    onChange(.time(duration: $0, bounce: bounce))
+                    onComponentChange(.duration($0))
                 }
                 DialSliderRow(title: "Bounce", value: bounce, range: 0...1, step: 0.05, unit: nil) {
-                    onChange(.time(duration: duration, bounce: $0))
+                    onComponentChange(.bounce($0))
                 }
             case let .physics(stiffness, damping, mass):
-                DialSliderRow(title: "Stiffness", value: stiffness, range: 1...1000, step: 1, unit: nil) {
-                    onChange(.physics(stiffness: $0, damping: damping, mass: mass))
+                DialSliderRow(title: "Stiffness", value: stiffness, range: InspectorMotionParameters.stiffnessRange, step: InspectorMotionParameters.stiffnessStep, unit: nil) {
+                    onComponentChange(.stiffness($0))
                 }
                 DialSliderRow(title: "Damping", value: damping, range: 1...100, step: 1, unit: nil) {
-                    onChange(.physics(stiffness: stiffness, damping: $0, mass: mass))
+                    onComponentChange(.damping($0))
                 }
                 DialSliderRow(title: "Mass", value: mass, range: 0.1...10, step: 0.1, unit: nil) {
-                    onChange(.physics(stiffness: stiffness, damping: damping, mass: $0))
+                    onComponentChange(.mass($0))
                 }
             }
         }
@@ -1331,6 +1355,7 @@ private struct DialTransitionControl: View {
     let value: DialKitTransitionValue
     @Binding var isExpanded: Bool
     let dividerVisibility: DialSectionDividerVisibility
+    let onComponentChange: (DialKitMotionComponent) -> Void
     let onChange: (DialKitTransitionValue) -> Void
 
     var body: some View {
@@ -1360,41 +1385,41 @@ private struct DialTransitionControl: View {
             switch value {
             case let .easing(duration, bezier):
                 DialSliderRow(title: "x1", value: bezier.x1, range: 0...1, step: 0.01, unit: nil) {
-                    onChange(.easing(duration: duration, bezier: bezier.updating(x1: $0)))
+                    onComponentChange(.x1($0))
                 }
                 DialSliderRow(title: "y1", value: bezier.y1, range: -1...2, step: 0.01, unit: nil) {
-                    onChange(.easing(duration: duration, bezier: bezier.updating(y1: $0)))
+                    onComponentChange(.y1($0))
                 }
                 DialSliderRow(title: "x2", value: bezier.x2, range: 0...1, step: 0.01, unit: nil) {
-                    onChange(.easing(duration: duration, bezier: bezier.updating(x2: $0)))
+                    onComponentChange(.x2($0))
                 }
                 DialSliderRow(title: "y2", value: bezier.y2, range: -1...2, step: 0.01, unit: nil) {
-                    onChange(.easing(duration: duration, bezier: bezier.updating(y2: $0)))
+                    onComponentChange(.y2($0))
                 }
                 DialSliderRow(title: "Duration", value: duration, range: 0.1...2, step: 0.05, unit: "s") {
-                    onChange(.easing(duration: $0, bezier: bezier))
+                    onComponentChange(.duration($0))
                 }
                 DialBezierRow(bezier: bezier) {
-                    onChange(.easing(duration: duration, bezier: $0))
+                    onComponentChange(.bezier($0))
                 }
             case let .spring(spring):
                 switch spring {
                 case let .time(duration, bounce):
                     DialSliderRow(title: "Duration", value: duration, range: 0.1...1, step: 0.05, unit: "s") {
-                        onChange(.spring(.time(duration: $0, bounce: bounce)))
+                        onComponentChange(.duration($0))
                     }
                     DialSliderRow(title: "Bounce", value: bounce, range: 0...1, step: 0.05, unit: nil) {
-                        onChange(.spring(.time(duration: duration, bounce: $0)))
+                        onComponentChange(.bounce($0))
                     }
                 case let .physics(stiffness, damping, mass):
-                    DialSliderRow(title: "Stiffness", value: stiffness, range: 1...1000, step: 10, unit: nil) {
-                        onChange(.spring(.physics(stiffness: $0, damping: damping, mass: mass)))
+                    DialSliderRow(title: "Stiffness", value: stiffness, range: InspectorMotionParameters.stiffnessRange, step: InspectorMotionParameters.stiffnessStep, unit: nil) {
+                        onComponentChange(.stiffness($0))
                     }
                     DialSliderRow(title: "Damping", value: damping, range: 1...100, step: 1, unit: nil) {
-                        onChange(.spring(.physics(stiffness: stiffness, damping: $0, mass: mass)))
+                        onComponentChange(.damping($0))
                     }
                     DialSliderRow(title: "Mass", value: mass, range: 0.1...10, step: 0.1, unit: nil) {
-                        onChange(.spring(.physics(stiffness: stiffness, damping: damping, mass: $0)))
+                        onComponentChange(.mass($0))
                     }
                 }
             }

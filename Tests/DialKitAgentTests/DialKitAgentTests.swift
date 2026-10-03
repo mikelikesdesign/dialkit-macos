@@ -43,6 +43,14 @@ final class DialKitAgentTests: XCTestCase {
         XCTAssertEqual(inspector.acceptCount, 2, "agent should reconnect once, not repeatedly")
     }
 
+    func testAgentReconnectsAfterOversizedInspectorMessage() async throws {
+        DialKitAgent.shared.start(appName: "Test", port: inspector.port)
+        try await inspector.waitForAccepts(1)
+        inspector.sendToCurrentConnection(Data(repeating: 65, count: DialKitWireCodec.maximumFrameBytes + 1))
+        try await inspector.waitForAccepts(2)
+        XCTAssertEqual(inspector.acceptCount, 2)
+    }
+
     func testRestartOnDifferentPortDoesNotLeaveReconnectLoopBehind() async throws {
         let other = FakeInspector()
         try await other.start()
@@ -128,6 +136,13 @@ private final class FakeInspector: @unchecked Sendable {
         let current = connections.popLast()
         lock.unlock()
         current?.cancel()
+    }
+
+    func sendToCurrentConnection(_ data: Data) {
+        lock.lock()
+        let current = connections.last
+        lock.unlock()
+        current?.send(content: data, completion: .contentProcessed { _ in })
     }
 
     func waitForAccepts(_ count: Int, timeout: TimeInterval = 3) async throws {

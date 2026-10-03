@@ -119,6 +119,12 @@ public final class DialStore: ObservableObject {
 }
 
 public extension DialStore {
+    @discardableResult
+    func setRemoteMotionComponent(panelID: UUID, path: String, component: DialKitMotionComponent) -> Bool {
+        guard let panel = panels.first(where: { $0.id == panelID }) else { return false }
+        return panel.setRemoteMotionComponent(path: path, component: component)
+    }
+
     func remoteSnapshot(appName: String) -> DialKitSessionSnapshot {
         DialKitSessionSnapshot(
             appName: appName,

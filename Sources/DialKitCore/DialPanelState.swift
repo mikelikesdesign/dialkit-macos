@@ -7,7 +7,7 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     @Published public var name: String
     @Published public var values: Model {
         didSet {
-            guard !isApplyingInternalChange, values != oldValue else { return }
+            guard !isApplyingInternalChange else { return }
             synchronizeValues()
         }
     }
@@ -31,12 +31,12 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
         self.id = id
         self.name = name
         self.controls = controls
-        var normalizedInitial = initial
+        var normalizedInitial = dialCopyModel(initial)
         for control in controls {
             control.node.normalize(current: &normalizedInitial, fallback: initial)
         }
         self.values = normalizedInitial
-        self.baseValues = normalizedInitial
+        self.baseValues = dialCopyModel(normalizedInitial)
         self.presets = []
         self.activePresetID = nil
         self.onAction = onAction
@@ -56,25 +56,25 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     ) {
         objectWillChange.send()
 
-        let fallbackSeed = initial ?? baseValues
-        var normalizedFallback = fallbackSeed
+        let fallbackSeed = dialCopyModel(initial ?? baseValues)
+        var normalizedFallback = dialCopyModel(fallbackSeed)
         for control in controls {
             control.node.normalize(current: &normalizedFallback, fallback: fallbackSeed)
         }
 
-        var nextValues = values
+        var nextValues = dialCopyModel(values)
         for control in controls {
             control.node.normalize(current: &nextValues, fallback: normalizedFallback)
         }
 
-        var nextBase = baseValues
+        var nextBase = dialCopyModel(baseValues)
         for control in controls {
             control.node.normalize(current: &nextBase, fallback: normalizedFallback)
         }
 
         var nextPresets = presets
         for index in nextPresets.indices {
-            var candidate = nextPresets[index].values
+            var candidate = dialCopyModel(nextPresets[index].values)
             for control in controls {
                 control.node.normalize(current: &candidate, fallback: normalizedFallback)
             }
@@ -93,7 +93,7 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     public func savePreset(named name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedName = trimmed.isEmpty ? nextPresetName : trimmed
-        let preset = DialPreset(name: resolvedName, values: values)
+        let preset = DialPreset(name: resolvedName, values: dialCopyModel(values))
         presets.append(preset)
         activePresetID = preset.id
     }
@@ -101,12 +101,12 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     public func loadPreset(id: UUID) {
         guard let preset = presets.first(where: { $0.id == id }) else { return }
         activePresetID = id
-        applyInternalValueChange(preset.values)
+        applyInternalValueChange(dialCopyModel(preset.values))
     }
 
     public func clearActivePreset() {
         activePresetID = nil
-        applyInternalValueChange(baseValues)
+        applyInternalValueChange(dialCopyModel(baseValues))
     }
 
     public func deletePreset(id: UUID) {
@@ -160,9 +160,9 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
 
     private func synchronizeValues() {
         if let activePresetID, let index = presets.firstIndex(where: { $0.id == activePresetID }) {
-            presets[index].values = values
+            presets[index].values = dialCopyModel(values)
         } else {
-            baseValues = values
+            baseValues = dialCopyModel(values)
         }
     }
 

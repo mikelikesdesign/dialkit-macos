@@ -1,6 +1,11 @@
 import Foundation
 import DialkitmacOSProtocol
 
+enum InspectorMotionParameters {
+    static let stiffnessRange = 1.0...1000.0
+    static let stiffnessStep = 1.0
+}
+
 func formatted(_ value: Double, step: Double, unit: String?) -> String {
     DialNumber.format(value, step: step) + (unit ?? "")
 }

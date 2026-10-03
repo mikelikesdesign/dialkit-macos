@@ -96,6 +96,11 @@ let package = Package(
             name: "DialkitmacOSAgentTests",
             dependencies: ["DialkitmacOSAgent", "DialkitmacOSCore", "DialkitmacOSProtocol"],
             path: "Tests/DialKitAgentTests"
+        ),
+        .testTarget(
+            name: "DialkitmacOSCLITests",
+            dependencies: ["DialkitmacOSCLI"],
+            path: "Tests/DialKitCLITests"
         )
     ]
 )

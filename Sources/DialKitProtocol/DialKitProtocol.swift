@@ -133,6 +133,7 @@ public enum DialKitAgentMessage: Codable, Equatable {
 public enum DialKitInspectorMessage: Codable, Equatable {
     case requestSnapshot
     case setControlValue(panelID: UUID, path: String, value: DialKitControlValue)
+    case setMotionComponent(panelID: UUID, path: String, component: DialKitMotionComponent)
     case triggerAction(panelID: UUID, path: String)
     case savePreset(panelID: UUID, name: String)
     case loadPreset(panelID: UUID, presetID: UUID)
@@ -142,11 +143,13 @@ public enum DialKitInspectorMessage: Codable, Equatable {
 
 public enum DialKitWireCodec {
     private static let newline = UInt8(10)
+    public static let maximumFrameBytes = 1024 * 1024
 
     public static func encode<Message: Encodable>(_ message: Message) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         var data = try encoder.encode(message)
+        guard data.count <= maximumFrameBytes else { throw DialKitWireError.frameTooLarge }
         data.append(newline)
         return data
     }
@@ -163,6 +166,10 @@ public enum DialKitWireCodec {
 
         while let newlineIndex = buffer.firstIndex(of: newline) {
             let line = buffer[..<newlineIndex]
+            guard line.count <= maximumFrameBytes else {
+                buffer.removeAll()
+                throw DialKitWireError.frameTooLarge
+            }
             buffer.removeSubrange(...newlineIndex)
 
             guard !line.isEmpty else {
@@ -170,12 +177,39 @@ public enum DialKitWireCodec {
             }
 
             do {
-                messages.append(try decoder.decode(Message.self, from: Data(line)))
+                let message = try decoder.decode(Message.self, from: Data(line))
+                if let agentMessage = message as? DialKitAgentMessage {
+                    switch agentMessage {
+                    case let .hello(snapshot), let .snapshot(snapshot):
+                        guard snapshot.panels.allSatisfy({ $0.controls.allSatisfy { $0.kind.isValid } }) else {
+                            throw DialKitWireError.invalidSnapshot
+                        }
+                    case .log: break
+                    }
+                }
+                messages.append(message)
             } catch {
                 onDecodingError(error)
             }
         }
 
+        guard buffer.count <= maximumFrameBytes else {
+            buffer.removeAll()
+            throw DialKitWireError.frameTooLarge
+        }
+
         return messages
+    }
+}
+
+public enum DialKitWireError: Error, Equatable, LocalizedError {
+    case frameTooLarge
+    case invalidSnapshot
+
+    public var errorDescription: String? {
+        switch self {
+        case .frameTooLarge: return "DialKit message exceeds the 1 MiB size limit."
+        case .invalidSnapshot: return "DialKit snapshot contains invalid control parameters."
+        }
     }
 }

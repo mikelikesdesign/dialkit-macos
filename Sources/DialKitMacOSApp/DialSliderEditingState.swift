@@ -12,6 +12,10 @@ struct DialSliderEditingState {
 
     func displayedValue(remote: Double) -> Double { pendingValue ?? remote }
 
+    mutating func resetForConfigurationChange() {
+        self = Self()
+    }
+
     mutating func begin(remote: Double) {
         guard !isDragging else { return }
         startValue = displayedValue(remote: remote)

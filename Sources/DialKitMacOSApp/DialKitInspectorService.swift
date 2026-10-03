@@ -41,6 +41,10 @@ final class DialKitInspectorService: ObservableObject {
         send(.triggerAction(panelID: panelID, path: path))
     }
 
+    func setMotionComponent(panelID: UUID, path: String, component: DialKitMotionComponent) {
+        send(.setMotionComponent(panelID: panelID, path: path, component: component))
+    }
+
     func savePreset(panelID: UUID, name: String) {
         send(.savePreset(panelID: panelID, name: name))
     }
@@ -212,6 +216,10 @@ final class DialKitInspectorService: ObservableObject {
                 }
             } catch {
                 lastLog = "Could not decode app message: \(error.localizedDescription)"
+                if error as? DialKitWireError == .frameTooLarge {
+                    dropCurrentConnection()
+                    return
+                }
             }
         }
 

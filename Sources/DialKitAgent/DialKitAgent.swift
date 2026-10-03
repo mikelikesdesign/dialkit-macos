@@ -148,6 +148,13 @@ public final class DialKitAgent {
                 }
             } catch {
                 sendLog("Could not decode inspector message: \(error.localizedDescription)")
+                if error as? DialKitWireError == .frameTooLarge {
+                    self.connection = nil
+                    connection.cancel()
+                    receiveBuffer.removeAll()
+                    scheduleReconnect()
+                    return
+                }
             }
         }
 
@@ -169,6 +176,10 @@ public final class DialKitAgent {
             sendSnapshot()
         case let .setControlValue(panelID, path, value):
             if DialStore.shared.setRemoteControlValue(panelID: panelID, path: path, value: value) {
+                sendSnapshot()
+            }
+        case let .setMotionComponent(panelID, path, component):
+            if DialStore.shared.setRemoteMotionComponent(panelID: panelID, path: path, component: component) {
                 sendSnapshot()
             }
         case let .triggerAction(panelID, path):
@@ -200,7 +211,18 @@ public final class DialKitAgent {
         }
 
         do {
-            let data = try DialKitWireCodec.encode(message)
+            let outgoing: DialKitAgentMessage
+            switch message {
+            case let .hello(snapshot), let .snapshot(snapshot):
+                let cleaned = snapshot.removingInvalidControls()
+                if !cleaned.paths.isEmpty {
+                    sendLog("Ignored invalid controls: \(cleaned.paths.prefix(10).joined(separator: ", "))")
+                }
+                if case .hello = message { outgoing = .hello(cleaned.snapshot) }
+                else { outgoing = .snapshot(cleaned.snapshot) }
+            case .log: outgoing = message
+            }
+            let data = try DialKitWireCodec.encode(outgoing)
             connection.send(content: data, completion: .contentProcessed { _ in })
         } catch {
             sendLog("Could not encode agent message: \(error.localizedDescription)")

@@ -247,6 +247,8 @@ You can also launch it with the helper command `swift run dialkit run` from the 
 
 The inspector listens on `127.0.0.1:44777`. The app and inspector must run on the same Mac. Physical iPhones and iPads are not supported by this loopback workflow. Run only one inspector instance at a time.
 
+Rebuild both the inspector and your app after updating the package so their message formats match. Invalid numeric controls are omitted with a status log while other controls continue updating.
+
 ## Example app
 
 The [demo app](Examples/DialKitDemo/DialKitDemo/ContentView.swift) uses a local package reference to this checkout, so no extra dependency setup is needed:
@@ -363,6 +365,8 @@ For a panel using `ControlsModel`, apply `.animation(cardAnimation(dial.values.s
 ## Multiple panels
 
 Every `DialPanelState` registers itself while it is alive, so you can have as many panels as you like. Keep them in `@StateObject` for SwiftUI views, or in a longer-lived object for app-wide values. When more than one panel is active, the inspector shows a picker at the top.
+
+Struct models are recommended. Models containing reference objects are copied through `Codable`, which must preserve their tuning state. For class models, use the controls or assign `values` to publish changes.
 
 ## Presets and copy
 
