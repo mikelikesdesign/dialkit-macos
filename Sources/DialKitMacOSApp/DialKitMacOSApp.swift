@@ -1067,16 +1067,14 @@ private struct DialSliderRow: View {
                             .animation(.easeOut(duration: 0.15), value: isSliderActive)
                     }
 
-                HStack(spacing: 0) {
-                    ForEach(0..<11, id: \.self) { _ in
-                        Capsule()
-                            .fill(DialTheme.ink.opacity(isSliderActive ? 0.15 : 0))
-                            .frame(width: 1, height: 8)
-                            .frame(maxWidth: .infinity)
-                    }
+                ForEach(DialSliderTicks.positions(range: range, step: step), id: \.self) { position in
+                    Capsule()
+                        .fill(DialTheme.ink.opacity(isSliderActive ? 0.15 : 0))
+                        .frame(width: 1, height: 8)
+                        .offset(x: width * CGFloat(position) - 0.5)
+                        .animation(.easeOut(duration: 0.2), value: isSliderActive)
+                        .allowsHitTesting(false)
                 }
-                .padding(.horizontal, 8)
-                .animation(.easeOut(duration: 0.2), value: isSliderActive)
 
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(DialTheme.ink.opacity(isSliderActive ? 0.08 : 0.10))
