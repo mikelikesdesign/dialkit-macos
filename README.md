@@ -387,6 +387,8 @@ The **Copy** button puts a plain-text summary of the exposed controls on your cl
 
 You can also manage presets in app code with `savePreset(named:)`, `loadPreset(id:)`, `clearActivePreset()`, and `deletePreset(id:)`. `dial.copyInstructionText()` produces an instruction containing the full model as JSON; its output differs from the inspector’s plain-text Copy summary.
 
+For Combine input, use `publisher.assign(to: &dial.$values)` and deliver UI updates on the main queue. These assignments validate motion values and update the selected preset; the subscription is cancelled when the panel is released. The `$values` projection supports normal Combine operators and has the concrete type `DialPanelValues<Model>.Publisher`. Prefer type inference or `eraseToAnyPublisher()` when storing it, rather than an explicit `Published<Model>.Publisher` annotation.
+
 ## Debug and release builds
 
 Guard the agent import and every `start()` call with `#if DEBUG`, as shown above. This prevents those calls from starting a connection in Release configurations where `DEBUG` is not defined. The package itself does not enforce debug-only use.

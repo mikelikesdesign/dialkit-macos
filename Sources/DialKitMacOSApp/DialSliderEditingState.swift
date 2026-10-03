@@ -43,8 +43,7 @@ struct DialSliderEditingState {
         return next
     }
 
-    /// An unchanged value will not trigger the view's onChange observer, so it
-    /// must not leave an edit waiting for an acknowledgement that cannot arrive.
+    /// An unchanged value needs no network round-trip or pending acknowledgement.
     @discardableResult
     mutating func commit(_ value: Double, remote: Double, step: Double) -> Bool {
         self.step = step

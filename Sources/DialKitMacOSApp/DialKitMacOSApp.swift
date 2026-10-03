@@ -447,7 +447,8 @@ private struct ControlInspectorView: View {
                 range: lowerBound...upperBound,
                 step: step,
                 unit: unit,
-                numericType: control.numericType ?? .double
+                numericType: control.numericType ?? .double,
+                source: DialSliderValueSource(panelID: panelID, path: control.path)
             ) {
                 service.setControlValue(panelID: panelID, path: control.path, value: .number($0))
             }
@@ -471,6 +472,7 @@ private struct ControlInspectorView: View {
             DialSpringControl(
                 title: control.label,
                 value: value,
+                source: DialSliderValueSource(panelID: panelID, path: control.path),
                 isExpanded: expansionBinding(control.id, true),
                 dividerVisibility: dividerVisibility,
                 onComponentChange: {
@@ -483,6 +485,7 @@ private struct ControlInspectorView: View {
             DialTransitionControl(
                 title: control.label,
                 value: value,
+                source: DialSliderValueSource(panelID: panelID, path: control.path),
                 isExpanded: expansionBinding(control.id, true),
                 dividerVisibility: dividerVisibility,
                 onComponentChange: {
@@ -975,6 +978,7 @@ private struct DialSliderRow: View {
     let step: Double
     let unit: String?
     var numericType: DialKitSliderValueType = .double
+    let source: DialSliderValueSource
     let onChange: (Double) -> Void
 
     @State private var interaction = DialSliderEditingState()
@@ -1033,12 +1037,14 @@ private struct DialSliderRow: View {
             }
         }
         .frame(height: 36)
+        .modifier(DialSliderSnapshotObserver(source: source) { newValue in
+            interaction.receive(newValue)
+        })
         .onAppear {
             interaction.configure(numericType: numericType)
             draftValue = formatted(displayedValue, step: step, unit: nil)
         }
-        .onChange(of: value) { _, newValue in
-            interaction.receive(newValue)
+        .onChange(of: value) { _, _ in
             guard !isValueEditing else {
                 return
             }
@@ -1337,6 +1343,7 @@ private struct DialActionButton: View {
 private struct DialSpringControl: View {
     let title: String
     let value: DialKitSpringValue
+    let source: DialSliderValueSource
     @Binding var isExpanded: Bool
     let dividerVisibility: DialSectionDividerVisibility
     let onComponentChange: (DialKitMotionComponent) -> Void
@@ -1362,20 +1369,20 @@ private struct DialSpringControl: View {
 
             switch value {
             case let .time(duration, bounce):
-                DialSliderRow(title: "Duration", value: duration, range: 0.1...1, step: 0.05, unit: "s") {
+                DialSliderRow(title: "Duration", value: duration, range: 0.1...1, step: 0.05, unit: "s", source: source.component(.duration)) {
                     onComponentChange(.duration($0))
                 }
-                DialSliderRow(title: "Bounce", value: bounce, range: 0...1, step: 0.05, unit: nil) {
+                DialSliderRow(title: "Bounce", value: bounce, range: 0...1, step: 0.05, unit: nil, source: source.component(.bounce)) {
                     onComponentChange(.bounce($0))
                 }
             case let .physics(stiffness, damping, mass):
-                DialSliderRow(title: "Stiffness", value: stiffness, range: InspectorMotionParameters.stiffnessRange, step: InspectorMotionParameters.stiffnessStep, unit: nil) {
+                DialSliderRow(title: "Stiffness", value: stiffness, range: InspectorMotionParameters.stiffnessRange, step: InspectorMotionParameters.stiffnessStep, unit: nil, source: source.component(.stiffness)) {
                     onComponentChange(.stiffness($0))
                 }
-                DialSliderRow(title: "Damping", value: damping, range: 1...100, step: 1, unit: nil) {
+                DialSliderRow(title: "Damping", value: damping, range: 1...100, step: 1, unit: nil, source: source.component(.damping)) {
                     onComponentChange(.damping($0))
                 }
-                DialSliderRow(title: "Mass", value: mass, range: 0.1...10, step: 0.1, unit: nil) {
+                DialSliderRow(title: "Mass", value: mass, range: 0.1...10, step: 0.1, unit: nil, source: source.component(.mass)) {
                     onComponentChange(.mass($0))
                 }
             }
@@ -1386,6 +1393,7 @@ private struct DialSpringControl: View {
 private struct DialTransitionControl: View {
     let title: String
     let value: DialKitTransitionValue
+    let source: DialSliderValueSource
     @Binding var isExpanded: Bool
     let dividerVisibility: DialSectionDividerVisibility
     let onComponentChange: (DialKitMotionComponent) -> Void
@@ -1417,19 +1425,19 @@ private struct DialTransitionControl: View {
 
             switch value {
             case let .easing(duration, bezier):
-                DialSliderRow(title: "x1", value: bezier.x1, range: 0...1, step: 0.01, unit: nil) {
+                DialSliderRow(title: "x1", value: bezier.x1, range: 0...1, step: 0.01, unit: nil, source: source.component(.x1)) {
                     onComponentChange(.x1($0))
                 }
-                DialSliderRow(title: "y1", value: bezier.y1, range: -1...2, step: 0.01, unit: nil) {
+                DialSliderRow(title: "y1", value: bezier.y1, range: -1...2, step: 0.01, unit: nil, source: source.component(.y1)) {
                     onComponentChange(.y1($0))
                 }
-                DialSliderRow(title: "x2", value: bezier.x2, range: 0...1, step: 0.01, unit: nil) {
+                DialSliderRow(title: "x2", value: bezier.x2, range: 0...1, step: 0.01, unit: nil, source: source.component(.x2)) {
                     onComponentChange(.x2($0))
                 }
-                DialSliderRow(title: "y2", value: bezier.y2, range: -1...2, step: 0.01, unit: nil) {
+                DialSliderRow(title: "y2", value: bezier.y2, range: -1...2, step: 0.01, unit: nil, source: source.component(.y2)) {
                     onComponentChange(.y2($0))
                 }
-                DialSliderRow(title: "Duration", value: duration, range: 0.1...2, step: 0.05, unit: "s") {
+                DialSliderRow(title: "Duration", value: duration, range: 0.1...2, step: 0.05, unit: "s", source: source.component(.duration)) {
                     onComponentChange(.duration($0))
                 }
                 DialBezierRow(bezier: bezier) {
@@ -1438,20 +1446,20 @@ private struct DialTransitionControl: View {
             case let .spring(spring):
                 switch spring {
                 case let .time(duration, bounce):
-                    DialSliderRow(title: "Duration", value: duration, range: 0.1...1, step: 0.05, unit: "s") {
+                    DialSliderRow(title: "Duration", value: duration, range: 0.1...1, step: 0.05, unit: "s", source: source.component(.duration)) {
                         onComponentChange(.duration($0))
                     }
-                    DialSliderRow(title: "Bounce", value: bounce, range: 0...1, step: 0.05, unit: nil) {
+                    DialSliderRow(title: "Bounce", value: bounce, range: 0...1, step: 0.05, unit: nil, source: source.component(.bounce)) {
                         onComponentChange(.bounce($0))
                     }
                 case let .physics(stiffness, damping, mass):
-                    DialSliderRow(title: "Stiffness", value: stiffness, range: InspectorMotionParameters.stiffnessRange, step: InspectorMotionParameters.stiffnessStep, unit: nil) {
+                    DialSliderRow(title: "Stiffness", value: stiffness, range: InspectorMotionParameters.stiffnessRange, step: InspectorMotionParameters.stiffnessStep, unit: nil, source: source.component(.stiffness)) {
                         onComponentChange(.stiffness($0))
                     }
-                    DialSliderRow(title: "Damping", value: damping, range: 1...100, step: 1, unit: nil) {
+                    DialSliderRow(title: "Damping", value: damping, range: 1...100, step: 1, unit: nil, source: source.component(.damping)) {
                         onComponentChange(.damping($0))
                     }
-                    DialSliderRow(title: "Mass", value: mass, range: 0.1...10, step: 0.1, unit: nil) {
+                    DialSliderRow(title: "Mass", value: mass, range: 0.1...10, step: 0.1, unit: nil, source: source.component(.mass)) {
                         onComponentChange(.mass($0))
                     }
                 }

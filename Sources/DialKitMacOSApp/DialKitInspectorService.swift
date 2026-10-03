@@ -231,7 +231,7 @@ final class DialKitInspectorService: ObservableObject {
         receive(on: connection)
     }
 
-    private func handle(_ message: DialKitAgentMessage) {
+    func handle(_ message: DialKitAgentMessage) {
         switch message {
         case let .hello(snapshot), let .snapshot(snapshot):
             handshakeTimeout?.cancel()

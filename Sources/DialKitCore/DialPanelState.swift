@@ -36,11 +36,13 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
         self.activePresetID = nil
         self.onAction = onAction
         self.panelBox = AnyDialPanelBox(id: id)
+        self._values.bind(to: self)
         self.panelBox.bind(to: self)
         DialStore.shared.register(panelBox)
     }
 
     deinit {
+        _values.cancelBindings()
         DialStore.shared.unregister(panelBox)
     }
 
@@ -181,12 +183,14 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
     }
 }
 
-/// Publishes panel values only after motion validation. The projection retains
-/// the same `Published<Model>.Publisher` API used by UIKit and AppKit clients.
+/// Publishes validated panel values and supports lifetime-managed Combine
+/// assignment through `publisher.assign(to: &panel.$values)`.
 @propertyWrapper
 public struct DialPanelValues<Model: Codable & Equatable> {
-    private final class Storage {
+    fileprivate final class Storage {
         @Published var value: Model
+        weak var state: DialPanelState<Model>?
+        var bindings: Set<AnyCancellable> = []
 
         init(_ value: Model) { self.value = value }
     }
@@ -203,7 +207,35 @@ public struct DialPanelValues<Model: Codable & Equatable> {
         set { fatalError() }
     }
 
-    public var projectedValue: Published<Model>.Publisher { storage.$value }
+    /// The writable projection lets Combine assignment retain a subscription
+    /// in this panel. Assignments use the validated values setter, never the
+    /// underlying Published storage directly.
+    public var projectedValue: Publisher {
+        get { Publisher(storage: storage) }
+        nonmutating set {
+            // assign(to:) installs its subscription in the existing storage.
+            // Swift's inout writeback must not replace this panel's identity.
+        }
+    }
+
+    fileprivate func bind(to state: DialPanelState<Model>) { storage.state = state }
+    fileprivate func cancelBindings() { storage.bindings.removeAll() }
+
+    public struct Publisher: Combine.Publisher {
+        public typealias Output = Model
+        public typealias Failure = Never
+        fileprivate let storage: Storage
+
+        public func receive<S: Subscriber>(subscriber: S) where S.Input == Model, S.Failure == Never {
+            storage.$value.receive(subscriber: subscriber)
+        }
+
+        fileprivate func assign<P: Combine.Publisher>(from publisher: P) where P.Output == Model, P.Failure == Never {
+            publisher.sink { [weak storage] value in
+                storage?.state?.values = value
+            }.store(in: &storage.bindings)
+        }
+    }
 
     public static subscript(
         _enclosingInstance state: DialPanelState<Model>,
@@ -217,5 +249,13 @@ public struct DialPanelValues<Model: Codable & Equatable> {
             state[keyPath: storageKeyPath].storage.value = normalized
             state.valuesDidChange()
         }
+    }
+}
+
+public extension Combine.Publisher where Failure == Never, Output: Codable & Equatable {
+    /// Assigns each value through panel validation and cancels automatically
+    /// when the panel is released, matching Combine's Published assignment use.
+    func assign(to published: inout DialPanelValues<Output>.Publisher) {
+        published.assign(from: self)
     }
 }
