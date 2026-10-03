@@ -54,8 +54,10 @@ struct DialSliderEditingState {
         return hadPendingEdit || pendingValue != nil
     }
 
-    mutating func receive(_ value: Double) {
-        guard let pendingValue, matches(pendingValue, value) else { return }
+    mutating func receive(_ value: Double, acknowledgingEdit: Bool = false) {
+        // Computed setters can adjust or reject an edit. Its explicit response
+        // is authoritative even when the resulting value differs from ours.
+        guard let pendingValue, acknowledgingEdit || matches(pendingValue, value) else { return }
         // Keep the pointer's value visible until mouse-up, but remember the
         // acknowledgement even if the app sends newer values during the drag.
         pendingAcknowledged = isDragging

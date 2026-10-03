@@ -400,7 +400,12 @@ package extension DialControlNode where Model: Codable & Equatable {
             let currentValue = getter(current)
             let valid = Set(options.map(\.value))
             guard valid.contains(currentValue) else {
-                setter(&current, getter(fallback))
+                let fallbackValue = getter(fallback)
+                if valid.contains(fallbackValue) {
+                    setter(&current, fallbackValue)
+                } else if let first = options.first {
+                    setter(&current, first.value)
+                }
                 return
             }
         case .spring, .transition:

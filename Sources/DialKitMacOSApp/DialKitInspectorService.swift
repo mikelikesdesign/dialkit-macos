@@ -16,6 +16,11 @@ final class DialKitInspectorService: ObservableObject {
     private var handshakeTimeout: Task<Void, Never>?
     @Published private(set) var listeningPort: UInt16?
     private let port: UInt16?
+    private struct ControlAddress: Hashable {
+        let panelID: UUID
+        let path: String
+    }
+    private var latestEdits: [ControlAddress: UUID] = [:]
 
     init(port: UInt16? = DialKitConnectionDefaults.port) {
         self.port = port
@@ -33,16 +38,29 @@ final class DialKitInspectorService: ObservableObject {
         send(.requestSnapshot)
     }
 
-    func setControlValue(panelID: UUID, path: String, value: DialKitControlValue) {
-        send(.setControlValue(panelID: panelID, path: path, value: value))
+    @discardableResult
+    func setControlValue(panelID: UUID, path: String, value: DialKitControlValue) -> UUID {
+        let editID = UUID()
+        latestEdits[ControlAddress(panelID: panelID, path: path)] = editID
+        send(.setControlValue(panelID: panelID, path: path, value: value, editID: editID))
+        return editID
     }
 
     func triggerAction(panelID: UUID, path: String) {
         send(.triggerAction(panelID: panelID, path: path))
     }
 
-    func setMotionComponent(panelID: UUID, path: String, component: DialKitMotionComponent) {
-        send(.setMotionComponent(panelID: panelID, path: path, component: component))
+    @discardableResult
+    func setMotionComponent(panelID: UUID, path: String, component: DialKitMotionComponent) -> UUID {
+        let editID = UUID()
+        latestEdits[ControlAddress(panelID: panelID, path: path)] = editID
+        send(.setMotionComponent(panelID: panelID, path: path, component: component, editID: editID))
+        return editID
+    }
+
+    func acknowledgesLatestEdit(_ snapshot: DialKitSessionSnapshot, panelID: UUID, path: String) -> Bool {
+        guard let editID = snapshot.acknowledgedEditID else { return false }
+        return latestEdits[ControlAddress(panelID: panelID, path: path)] == editID
     }
 
     func savePreset(panelID: UUID, name: String) {
@@ -135,6 +153,7 @@ final class DialKitInspectorService: ObservableObject {
             return
         }
         connection = newConnection
+        latestEdits.removeAll()
         snapshot = nil
         lastLog = nil
         receiveBuffer.removeAll()
@@ -180,6 +199,7 @@ final class DialKitInspectorService: ObservableObject {
         handshakeTimeout = nil
         connection?.cancel()
         connection = nil
+        latestEdits.removeAll()
         snapshot = nil
         receiveBuffer.removeAll()
         status = "Waiting for app"

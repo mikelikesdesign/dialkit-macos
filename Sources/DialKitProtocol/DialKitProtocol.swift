@@ -9,6 +9,8 @@ public struct DialKitSessionSnapshot: Codable, Equatable, Identifiable {
     public var id: UUID
     public var appName: String
     public var panels: [DialKitPanelSnapshot]
+    /// Identifies the inspector edit processed before this snapshot was captured.
+    public var acknowledgedEditID: UUID?
 
     public init(id: UUID = UUID(), appName: String, panels: [DialKitPanelSnapshot]) {
         self.id = id
@@ -140,8 +142,8 @@ public enum DialKitAgentMessage: Codable, Equatable {
 
 public enum DialKitInspectorMessage: Codable, Equatable {
     case requestSnapshot
-    case setControlValue(panelID: UUID, path: String, value: DialKitControlValue)
-    case setMotionComponent(panelID: UUID, path: String, component: DialKitMotionComponent)
+    case setControlValue(panelID: UUID, path: String, value: DialKitControlValue, editID: UUID? = nil)
+    case setMotionComponent(panelID: UUID, path: String, component: DialKitMotionComponent, editID: UUID? = nil)
     case triggerAction(panelID: UUID, path: String)
     case savePreset(panelID: UUID, name: String)
     case loadPreset(panelID: UUID, presetID: UUID)

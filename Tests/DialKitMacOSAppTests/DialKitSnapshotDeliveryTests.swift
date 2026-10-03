@@ -17,8 +17,8 @@ final class DialKitSnapshotDeliveryTests: XCTestCase {
             let remote = source.value(in: service.snapshot) ?? 0
             let value = editing.displayedValue(remote: remote)
             Text("\(value)")
-                .modifier(DialSliderSnapshotObserver(source: source) { next in
-                    editing.receive(next)
+                .modifier(DialSliderSnapshotObserver(source: source) { next, acknowledged in
+                    editing.receive(next, acknowledgingEdit: acknowledged)
                     received(next, editing.pendingValue)
                 })
                 .onChange(of: value, initial: true) { _, next in displayed(next) }
@@ -38,19 +38,28 @@ final class DialKitSnapshotDeliveryTests: XCTestCase {
         }
     }
 
-    private func checkCoalescedUpdates(field: DialSliderValueSource.Field, kind: (Double) -> DialKitControlKind) async throws {
+    func testAdjustedAcknowledgementReachesRenderedSlider() async throws {
+        try await checkCoalescedUpdates(field: .value, adjusted: true) {
+            .slider(value: $0, lowerBound: 0, upperBound: 100, step: 1, unit: nil)
+        }
+    }
+
+    private func checkCoalescedUpdates(field: DialSliderValueSource.Field, adjusted: Bool = false, kind: (Double) -> DialKitControlKind) async throws {
         let service = DialKitInspectorService(port: nil)
         let panelID = UUID()
         let source = DialSliderValueSource(panelID: panelID, path: "group.value", field: field)
-        func send(_ value: Double) {
+        func send(_ value: Double, editID: UUID? = nil) {
             let control = DialKitControlSnapshot(path: "group.value", label: "Value", kind: kind(value))
             let group = DialKitControlSnapshot(path: "group", label: "Group", kind: .group(collapsed: false, controls: [control]))
             let panel = DialKitPanelSnapshot(id: panelID, name: "Probe", controls: [group], presets: [], activePresetID: nil, nextPresetName: "Version 2")
-            service.handle(.snapshot(.init(appName: "Probe", panels: [panel])))
+            var snapshot = DialKitSessionSnapshot(appName: "Probe", panels: [panel])
+            snapshot.acknowledgedEditID = editID
+            service.handle(.snapshot(snapshot))
         }
         send(20)
         var editing = DialSliderEditingState()
         XCTAssertTrue(editing.commit(50, remote: 20, step: 1))
+        let editID = service.setControlValue(panelID: panelID, path: source.path, value: .number(50))
         var received: [(Double, Double?)] = []
         var displayed: [Double] = []
         let host = NSHostingView(rootView: SliderProbe(service: service, source: source,
@@ -61,14 +70,15 @@ final class DialKitSnapshotDeliveryTests: XCTestCase {
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
         // The network decoder delivers consecutive frames in the same turn.
-        send(50)
+        let acknowledgedValue = adjusted ? 45.0 : 50.0
+        send(acknowledgedValue, editID: adjusted ? editID : nil)
         send(60)
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
         send(70)
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertTrue(received.contains { $0.0 == 50 && $0.1 == nil }, "Receive the acknowledgement even when it never renders")
+        XCTAssertTrue(received.contains { $0.0 == acknowledgedValue && $0.1 == nil }, "Receive the acknowledgement even when it never renders")
         XCTAssertEqual(received.last?.0, 70)
         XCTAssertNil(received.last?.1)
         XCTAssertEqual(displayed.last, 70)

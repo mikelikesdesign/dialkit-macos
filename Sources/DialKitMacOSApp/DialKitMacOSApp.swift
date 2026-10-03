@@ -629,6 +629,17 @@ private struct DialSegmentedControl<Value: Hashable>: View {
     let selection: Value
     let onSelect: (Value) -> Void
 
+    private var controlWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let widestLabel = options.map {
+            ($0.label as NSString).size(withAttributes: [.font: font]).width
+        }.max() ?? 0
+        let segmentCount = CGFloat(max(options.count, 2))
+        let defaultWidth = segmentCount * 56
+        let paddedLabelWidth = (ceil(widestLabel) + 24) * segmentCount + 4
+        return max(defaultWidth, paddedLabelWidth)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let inset: CGFloat = 2
@@ -672,7 +683,7 @@ private struct DialSegmentedControl<Value: Hashable>: View {
                 .padding(inset)
             }
         }
-        .frame(width: CGFloat(max(options.count, 2)) * 56, height: 32)
+        .frame(width: controlWidth, height: 32)
         .background(DialRowBackground(cornerRadius: 8))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
@@ -1037,8 +1048,8 @@ private struct DialSliderRow: View {
             }
         }
         .frame(height: 36)
-        .modifier(DialSliderSnapshotObserver(source: source) { newValue in
-            interaction.receive(newValue)
+        .modifier(DialSliderSnapshotObserver(source: source) { newValue, acknowledged in
+            interaction.receive(newValue, acknowledgingEdit: acknowledged)
         })
         .onAppear {
             interaction.configure(numericType: numericType)

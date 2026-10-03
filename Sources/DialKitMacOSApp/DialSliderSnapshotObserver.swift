@@ -61,12 +61,15 @@ struct DialSliderValueSource {
 struct DialSliderSnapshotObserver: ViewModifier {
     @EnvironmentObject private var service: DialKitInspectorService
     let source: DialSliderValueSource
-    let receive: (Double) -> Void
+    let receive: (Double, Bool) -> Void
 
     func body(content: Content) -> some View {
         // onChange observes rendered values and can skip an acknowledgement
         // when several snapshots arrive in one main-queue turn. onReceive
         // delivers each snapshot, including values that never reach a redraw.
-        content.onReceive(service.$snapshot.compactMap { source.value(in: $0) }, perform: receive)
+        content.onReceive(service.$snapshot.compactMap { $0 }) { snapshot in
+            guard let value = source.value(in: snapshot) else { return }
+            receive(value, service.acknowledgesLatestEdit(snapshot, panelID: source.panelID, path: source.path))
+        }
     }
 }

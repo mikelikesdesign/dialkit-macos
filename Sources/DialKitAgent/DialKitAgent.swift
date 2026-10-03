@@ -68,7 +68,13 @@ public final class DialKitAgent {
     }
 
     public func sendSnapshot() {
-        send(.snapshot(DialStore.shared.remoteSnapshot(appName: appName)))
+        sendSnapshot(acknowledging: nil)
+    }
+
+    private func sendSnapshot(acknowledging editID: UUID?) {
+        var snapshot = DialStore.shared.remoteSnapshot(appName: appName)
+        snapshot.acknowledgedEditID = editID
+        send(.snapshot(snapshot))
     }
 
     private func connect() {
@@ -179,14 +185,12 @@ public final class DialKitAgent {
         switch message {
         case .requestSnapshot:
             sendSnapshot()
-        case let .setControlValue(panelID, path, value):
-            if DialStore.shared.setRemoteControlValue(panelID: panelID, path: path, value: value) {
-                sendSnapshot()
-            }
-        case let .setMotionComponent(panelID, path, component):
-            if DialStore.shared.setRemoteMotionComponent(panelID: panelID, path: path, component: component) {
-                sendSnapshot()
-            }
+        case let .setControlValue(panelID, path, value, editID):
+            _ = DialStore.shared.setRemoteControlValue(panelID: panelID, path: path, value: value)
+            sendSnapshot(acknowledging: editID)
+        case let .setMotionComponent(panelID, path, component, editID):
+            _ = DialStore.shared.setRemoteMotionComponent(panelID: panelID, path: path, component: component)
+            sendSnapshot(acknowledging: editID)
         case let .triggerAction(panelID, path):
             if DialStore.shared.triggerRemoteAction(panelID: panelID, path: path) {
                 sendSnapshot()
