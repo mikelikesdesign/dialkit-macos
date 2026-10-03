@@ -10,18 +10,26 @@ struct DialKitMacOSApp: App {
     @NSApplicationDelegateAdaptor(DialKitAppDelegate.self) private var appDelegate
     #endif
     @StateObject private var service = DialKitInspectorService()
+    @AppStorage("dialkit.inspector.darkMode") private var isDarkMode = true
 
     var body: some Scene {
         WindowGroup("Dialkit macOS") {
-            InspectorView()
+            InspectorView(isDarkMode: $isDarkMode)
                 .environmentObject(service)
                 .frame(minWidth: 320, minHeight: 420)
                 .background(DialTheme.panelBackground)
                 .toolbarBackground(DialTheme.panelBackground, for: .windowToolbar)
                 .toolbarBackground(.visible, for: .windowToolbar)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(isDarkMode ? .dark : .light)
+                .onAppear(perform: applyAppearance)
+                .onChange(of: isDarkMode) { _, _ in applyAppearance() }
         }
         .defaultSize(width: 390, height: 720)
+    }
+
+    private func applyAppearance() {
+        // Keep native title bars, text editors, and the color panel in sync too.
+        NSApp.appearance = NSAppearance(named: isDarkMode ? .darkAqua : .aqua)
     }
 }
 
@@ -55,20 +63,29 @@ private final class DialKitAppDelegate: NSObject, NSApplicationDelegate {
 #endif
 
 private enum DialTheme {
-    static let panelBackground = color(from: "#212121")
-    static let border = Color.white.opacity(0.10)
-    static let borderSoft = Color.white.opacity(0.06)
-    static let surface = Color.white.opacity(0.05)
-    static let surfaceActive = Color.white.opacity(0.11)
-    static let textRoot = Color.white
-    static let textSection = Color.white.opacity(0.70)
-    static let textLabel = Color.white.opacity(0.70)
-    static let textMuted = Color.white.opacity(0.40)
-    static let shadow = Color.black.opacity(0.45)
+    static let ink = adaptive(light: .black, dark: .white)
+    static let panelBackground = adaptive(
+        light: NSColor(white: 0.96, alpha: 1), dark: NSColor(white: 33.0 / 255, alpha: 1))
+    static let border = ink.opacity(0.10)
+    static let borderSoft = ink.opacity(0.06)
+    static let surface = ink.opacity(0.05)
+    static let surfaceActive = ink.opacity(0.11)
+    static let textRoot = ink
+    static let textSection = ink.opacity(0.70)
+    static let textLabel = ink.opacity(0.70)
+    static let textMuted = adaptive(light: .black.withAlphaComponent(0.55), dark: .white.withAlphaComponent(0.40))
+    static let shadow = adaptive(light: .black.withAlphaComponent(0.08), dark: .black.withAlphaComponent(0.45))
+
+    private static func adaptive(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        })
+    }
 }
 
 private struct InspectorView: View {
     @EnvironmentObject private var service: DialKitInspectorService
+    @Binding var isDarkMode: Bool
     @State private var selectedPanelID: UUID?
 
     var body: some View {
@@ -81,7 +98,8 @@ private struct InspectorView: View {
                     StandalonePanelInspectorView(
                         snapshot: snapshot,
                         panel: panel,
-                        selectedPanelID: $selectedPanelID
+                        selectedPanelID: $selectedPanelID,
+                        isDarkMode: $isDarkMode
                     )
                     .padding(8)
                 }
@@ -143,6 +161,8 @@ private struct InspectorView: View {
                 .background(DialRowBackground(cornerRadius: 8))
             }
             .buttonStyle(.plain)
+            DialToggleRow(title: "Dark Mode", isOn: isDarkMode) { isDarkMode = $0 }
+                .padding(.top, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
@@ -183,6 +203,7 @@ private struct StandalonePanelInspectorView: View {
     let snapshot: DialKitSessionSnapshot
     let panel: DialKitPanelSnapshot
     @Binding var selectedPanelID: UUID?
+    @Binding var isDarkMode: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -193,6 +214,14 @@ private struct StandalonePanelInspectorView: View {
 
             PanelControlsView(panel: panel)
                 .id(panel.id)
+
+            Rectangle()
+                .fill(DialTheme.borderSoft)
+                .frame(height: 1)
+                .padding(.horizontal, 12)
+
+            DialToggleRow(title: "Dark Mode", isOn: isDarkMode) { isDarkMode = $0 }
+                .padding(12)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background {
@@ -300,13 +329,15 @@ private struct PanelControlsView: View {
                 // reuse a name from a snapshot that is still in flight.
                 service.savePreset(panelID: panel.id, name: "")
             } label: {
-                Image(systemName: "slider.horizontal.below.square.and.square.filled")
-                    .font(.system(size: 14, weight: .semibold))
+                DialAddVersionIcon()
+                    .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    .frame(width: 18, height: 18)
                     .foregroundStyle(DialTheme.textLabel)
                     .frame(width: 36, height: 36)
                     .background(DialRowBackground(cornerRadius: 8))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Save \(panel.nextPresetName)")
             .help("Save \(panel.nextPresetName)")
 
             Menu {
@@ -518,6 +549,24 @@ private struct ControlInspectorView: View {
     }
 }
 
+/// Matches ICON_ADD_PRESET in Josh Puckett's DialKit (src/icons.ts).
+private struct DialAddVersionIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for (start, end) in [
+            (CGPoint(x: 4, y: 6), CGPoint(x: 20, y: 6)),
+            (CGPoint(x: 4, y: 12), CGPoint(x: 10, y: 12)),
+            (CGPoint(x: 4, y: 18), CGPoint(x: 10, y: 18)),
+            (CGPoint(x: 15, y: 15), CGPoint(x: 21, y: 15)),
+            (CGPoint(x: 18, y: 12), CGPoint(x: 18, y: 18))
+        ] {
+            path.move(to: CGPoint(x: rect.minX + start.x / 24 * rect.width, y: rect.minY + start.y / 24 * rect.height))
+            path.addLine(to: CGPoint(x: rect.minX + end.x / 24 * rect.width, y: rect.minY + end.y / 24 * rect.height))
+        }
+        return path
+    }
+}
+
 private struct DialRowBackground: View {
     let cornerRadius: CGFloat
 
@@ -661,7 +710,7 @@ private struct DialSegmentedControl<Value: Hashable>: View {
                     ForEach(options) { option in
                         Text(option.label)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(selection == option.value ? Color.white.opacity(0.82) : DialTheme.textLabel)
+                            .foregroundStyle(selection == option.value ? DialTheme.ink.opacity(0.82) : DialTheme.textLabel)
                             .frame(width: segmentWidth, height: segmentHeight)
                             .contentShape(Rectangle())
                             .onTapGesture {
@@ -803,7 +852,7 @@ private struct DialTextRow: View {
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(DialTheme.textLabel)
-                .tint(.white)
+                .tint(DialTheme.ink)
                 .focused($isFocused)
                 .onChange(of: draft) { _, newValue in
                     guard isFocused, newValue != value else { return }
@@ -903,7 +952,7 @@ private struct DialColorSwatchPicker: View {
                 .fill(displayColor)
                 .overlay {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .stroke(DialTheme.ink.opacity(0.18), lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)
@@ -983,6 +1032,7 @@ final class DialNativeColorPanel: NSObject {
 #endif
 
 private struct DialSliderRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: String
     let value: Double
     let range: ClosedRange<Double>
@@ -995,8 +1045,10 @@ private struct DialSliderRow: View {
     @State private var interaction = DialSliderEditingState()
     @State private var draftValue = ""
     @State private var isValueEditing = false
+    @State private var isHovered = false
 
     private var displayedValue: Double { interaction.displayedValue(remote: value) }
+    private var isSliderActive: Bool { isHovered || interaction.isDragging }
 
     private var progress: CGFloat {
         guard range.upperBound > range.lowerBound else { return 0 }
@@ -1009,23 +1061,30 @@ private struct DialSliderRow: View {
 
             ZStack(alignment: .leading) {
                 DialRowBackground(cornerRadius: 8)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.black.opacity(isSliderActive ? 0.10 : 0))
+                            .animation(.easeOut(duration: 0.15), value: isSliderActive)
+                    }
 
                 HStack(spacing: 0) {
                     ForEach(0..<11, id: \.self) { _ in
                         Capsule()
-                            .fill(Color.white.opacity(interaction.isDragging ? 0.15 : 0))
+                            .fill(DialTheme.ink.opacity(isSliderActive ? 0.15 : 0))
                             .frame(width: 1, height: 8)
                             .frame(maxWidth: .infinity)
                     }
                 }
                 .padding(.horizontal, 8)
+                .animation(.easeOut(duration: 0.2), value: isSliderActive)
 
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(interaction.isDragging ? 0.14 : 0.10))
+                    .fill(DialTheme.ink.opacity(isSliderActive ? 0.08 : 0.10))
+                    .animation(.easeOut(duration: 0.15), value: isSliderActive)
                     .frame(width: width * max(0, min(progress, 1)))
 
                 RoundedRectangle(cornerRadius: 99, style: .continuous)
-                    .fill(Color.white.opacity(0.8))
+                    .fill(DialTheme.ink.opacity(0.8))
                     .frame(width: 3, height: 20)
                     .offset(x: max(width * max(0, min(progress, 1)) - 2, 6))
 
@@ -1048,6 +1107,7 @@ private struct DialSliderRow: View {
             }
         }
         .frame(height: 36)
+        .onHover { isHovered = $0 }
         .modifier(DialSliderSnapshotObserver(source: source) { newValue, acknowledged in
             interaction.receive(newValue, acknowledgingEdit: acknowledged)
         })
@@ -1092,7 +1152,7 @@ private struct DialSliderRow: View {
                     .frame(width: valueEditorWidth)
                     .background {
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Color.white.opacity(0.10))
+                            .fill(DialTheme.ink.opacity(0.10))
                             .padding(.horizontal, -4)
                             .padding(.vertical, -2)
                     }
@@ -1100,13 +1160,13 @@ private struct DialSliderRow: View {
                 if let unit {
                     Text(unit)
                         .font(.system(size: 13, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(DialTheme.ink)
                 }
             }
         } else {
             Text(formatted(displayedValue, step: step, unit: unit))
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(interaction.isDragging ? Color.white : DialTheme.textLabel)
+                .foregroundStyle(interaction.isDragging ? DialTheme.ink : DialTheme.textLabel)
                 .frame(minWidth: valueEditorWidth, alignment: .trailing)
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -1131,18 +1191,22 @@ private struct DialSliderRow: View {
         DragGesture(minimumDistance: 0)
             .onChanged { gesture in
                 interaction.begin(remote: value)
-                updateValue(translation: gesture.translation.width, width: width)
+                if let next = interaction.updatePointer(translation: gesture.translation, width: Double(width), range: range, step: step) {
+                    onChange(next)
+                }
             }
             .onEnded { gesture in
-                updateValue(translation: gesture.translation.width, width: width)
-                interaction.end(remote: value)
+                // Match the original DialKit click spring; scrubbing stays immediate.
+                let animation: Animation? = interaction.isClick(translation: gesture.translation) && !reduceMotion
+                    ? .interpolatingSpring(mass: 0.8, stiffness: 300, damping: 25, initialVelocity: 0)
+                    : nil
+                let next = withAnimation(animation) {
+                    interaction.endPointer(at: Double(gesture.location.x), translation: gesture.translation, width: Double(width), remote: value, range: range, step: step)
+                }
+                if let next {
+                    onChange(next)
+                }
             }
-    }
-
-    private func updateValue(translation: CGFloat, width: CGFloat) {
-        if let next = interaction.update(translation: Double(translation), width: Double(width), range: range, step: step) {
-            onChange(next)
-        }
     }
 
     private func commitDraftValue() {
@@ -1195,7 +1259,7 @@ struct DialInlineNumberTextField: NSViewRepresentable {
         textField.usesSingleLineMode = true
         textField.lineBreakMode = .byClipping
         textField.font = .monospacedSystemFont(ofSize: 13, weight: .medium)
-        textField.textColor = .white
+        textField.textColor = .labelColor
         textField.stringValue = text
         textField.cell?.isScrollable = true
         context.coordinator.installClickAwayMonitor(for: textField)
@@ -1545,11 +1609,11 @@ private struct SpringVisualization: View {
             var midpoint = Path()
             midpoint.move(to: CGPoint(x: 0, y: height / 2))
             midpoint.addLine(to: CGPoint(x: width, y: height / 2))
-            context.stroke(midpoint, with: .color(Color.white.opacity(0.15)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            context.stroke(midpoint, with: .color(DialTheme.ink.opacity(0.15)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
             var curve = Path()
             curve.addLines(points)
-            context.stroke(curve, with: .color(Color.white.opacity(0.62)), lineWidth: 2)
+            context.stroke(curve, with: .color(DialTheme.ink.opacity(0.62)), lineWidth: 2)
         }
         .background(DialRowBackground(cornerRadius: 8))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -1591,11 +1655,11 @@ private struct EasingVisualization: View {
             var axis = Path()
             axis.move(to: .init(x: 0, y: size.height))
             axis.addLine(to: .init(x: size.width, y: 0))
-            context.stroke(axis, with: .color(Color.white.opacity(0.15)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            context.stroke(axis, with: .color(DialTheme.ink.opacity(0.15)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
             var curve = Path()
             curve.addLines(easingPoints(in: size))
-            context.stroke(curve, with: .color(Color.white.opacity(0.62)), lineWidth: 2)
+            context.stroke(curve, with: .color(DialTheme.ink.opacity(0.62)), lineWidth: 2)
         }
         .background(DialRowBackground(cornerRadius: 8))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -1633,12 +1697,12 @@ private func drawGrid(in size: CGSize, context: inout GraphicsContext) {
         var horizontal = Path()
         horizontal.move(to: CGPoint(x: 0, y: horizontalY))
         horizontal.addLine(to: CGPoint(x: size.width, y: horizontalY))
-        context.stroke(horizontal, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+        context.stroke(horizontal, with: .color(DialTheme.ink.opacity(0.08)), lineWidth: 1)
 
         var vertical = Path()
         vertical.move(to: CGPoint(x: verticalX, y: 0))
         vertical.addLine(to: CGPoint(x: verticalX, y: size.height))
-        context.stroke(vertical, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+        context.stroke(vertical, with: .color(DialTheme.ink.opacity(0.08)), lineWidth: 1)
     }
 }
 

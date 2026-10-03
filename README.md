@@ -245,6 +245,8 @@ Run these commands in Terminal on your Mac. The first run compiles the inspector
 
 You can also launch it with the helper command `swift run dialkit run` from the checkout. No separate `.app` download is required. If nothing shows up, check the status at the bottom of the inspector’s empty state and the [troubleshooting table](#troubleshooting).
 
+The inspector starts in dark mode by default. Scroll to the last control in the panel and use **Dark Mode → Off / On** to choose light or dark mode. Your choice is remembered across launches and changes only the inspector’s appearance, not the app you are tuning. The switch is also available in the disconnected view.
+
 The inspector listens on `127.0.0.1:44777`. The app and inspector must run on the same Mac. Physical iPhones and iPads are not supported by this loopback workflow. Run only one inspector instance at a time.
 
 Rebuild both the inspector and your app after updating the package so their message formats match. Invalid numeric controls are omitted with a status log while other controls continue updating.
@@ -311,6 +313,8 @@ struct ControlsModel: Codable, Equatable {
 Groups organize controls and prefix their paths (for example, `motion.spring`); they do not change key paths, which still refer to the root model. A path already containing a dot is treated as an explicit path. Slider edits are clamped to the range and snapped to the step; set `step: 1` for integer controls.
 
 Slider values travel as `Double`, so very large integers may not have single-unit precision.
+
+In the Mac inspector, click the slider track to move to that position with a quick spring animation, or drag to scrub immediately relative to the current value. Click the numeric readout to type an exact value. The click animation respects Reduce Motion.
 
 ### Actions
 

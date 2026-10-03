@@ -9,6 +9,7 @@ struct DialSliderEditingState {
     private(set) var pendingValue: Double?
     private var step = 0.0
     private var pendingAcknowledged = false
+    private var hasScrubbed = false
     private var numericType: DialKitSliderValueType
 
     init(numericType: DialKitSliderValueType = .double) {
@@ -29,7 +30,37 @@ struct DialSliderEditingState {
     mutating func begin(remote: Double) {
         guard !isDragging else { return }
         startValue = displayedValue(remote: remote)
+        hasScrubbed = false
         isDragging = true
+    }
+
+    /// Wait for pointer intent before changing the value. Once a drag starts,
+    /// returning to the original position must not turn it into a click.
+    func isClick(translation: CGSize) -> Bool {
+        isDragging && !hasScrubbed && hypot(translation.width, translation.height) <= 3
+    }
+
+    mutating func updatePointer(translation: CGSize, width: Double, range: ClosedRange<Double>, step: Double) -> Double? {
+        guard isDragging else { return nil }
+        if hypot(translation.width, translation.height) > 3 { hasScrubbed = true }
+        guard hasScrubbed else { return nil }
+        return update(translation: Double(translation.width), width: width, range: range, step: step)
+    }
+
+    mutating func endPointer(at position: Double, translation: CGSize, width: Double, remote: Double, range: ClosedRange<Double>, step: Double) -> Double? {
+        guard isDragging else { return nil }
+        let scrubbedValue = updatePointer(translation: translation, width: width, range: range, step: step)
+        let next: Double?
+        if hasScrubbed {
+            next = scrubbedValue
+        } else {
+            let fraction = min(max(position / max(width, 1), 0), 1)
+            let raw = range.lowerBound + fraction * (range.upperBound - range.lowerBound)
+            let clickedValue = DialNumber.round(raw, step: step, within: range)
+            next = commit(clickedValue, remote: remote, step: step) ? clickedValue : nil
+        }
+        end(remote: remote)
+        return next
     }
 
     mutating func update(translation: Double, width: Double, range: ClosedRange<Double>, step: Double) -> Double? {
@@ -66,6 +97,7 @@ struct DialSliderEditingState {
 
     mutating func end(remote: Double) {
         isDragging = false
+        hasScrubbed = false
         startValue = nil
         if pendingAcknowledged {
             pendingValue = nil
