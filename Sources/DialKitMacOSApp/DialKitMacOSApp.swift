@@ -16,7 +16,7 @@ struct DialKitMacOSApp: App {
         WindowGroup("Dialkit macOS") {
             InspectorView(isDarkMode: $isDarkMode)
                 .environmentObject(service)
-                .frame(minWidth: 320, minHeight: 420)
+                .frame(minWidth: 344, minHeight: 420)
                 .background(DialTheme.panelBackground)
                 .toolbarBackground(DialTheme.panelBackground, for: .windowToolbar)
                 .toolbarBackground(.visible, for: .windowToolbar)
@@ -749,8 +749,10 @@ private struct DialSegmentedRow<Value: Hashable>: View {
             Text(title)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(DialTheme.textLabel)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
 
             DialSegmentedControl(options: options, selection: selection, onSelect: onSelect)
         }
