@@ -414,7 +414,7 @@ Use `--app-name "My App"` to customize the name in the generated startup snippet
 
 ## Troubleshooting
 
-| Symptom | What to check |
+| Issue | What to check |
 | --- | --- |
 | `No such module 'DialkitmacOS'` or `'DialkitmacOSAgent'` | Add the package products to the target compiling that file, and check the exact import spelling. |
 | Inspector says **Waiting for app** or **Listening on 127.0.0.1:44777** | Run a Debug build on the same Mac, confirm the startup code calls `DialKitAgent.shared.start()`, and keep the app or preview running. |
