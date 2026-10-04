@@ -239,8 +239,8 @@ cd dialkit-macos
 swift run dialkit-macos
 ```
 
-The inspector uses the original DialKit artwork as its Dock icon. To create a
-local app bundle with the Finder icon as well, run `bash Scripts/package-app.sh`.
+To create a local app bundle with the Finder icon as well, run
+`bash Scripts/package-app.sh`.
 The app is written to `.build/package-app/Dialkit macOS.app`.
 
 Run these commands in Terminal on your Mac. The first run compiles the inspector; later runs reuse the build when possible. Keep the process running while you tune. Launch your app or resume your preview, and the panel appears. Stop the inspector with **Control-C** in Terminal.
