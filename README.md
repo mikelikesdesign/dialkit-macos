@@ -2,13 +2,17 @@
 
 Dialkit macOS is a Mac app for tuning your iOS interface live. Your app runs in the iOS Simulator or an Xcode Preview, the inspector runs on your Mac, and every slider, color, and spring you interact with updates the app in real time.
 
+## Quick start
+
+To get started quickly, ask your coding agent to connect Dialkit macOS to your Xcode project. Tell it which aspects of your design you want to tweak live, such as spacing, colors, layout details, or animations.
+
 ![Dialkit macOS inspector alongside an iOS app in Xcode Preview](media/dialkit-macos.png)
 
 ## Credit
 
 This Swift package is based on the original [DialKit repository](https://github.com/joshpuckett/dialkit) by [Josh Puckett](https://github.com/joshpuckett).
 
-[Installation](#installation) · [Quick start](#quick-start) · [Running the inspector](#running-the-inspector) · [Controls](#controls) · [Troubleshooting](#troubleshooting)
+[Quick start](#quick-start) · [Installation](#installation) · [Code example](#code-example) · [Running the inspector](#running-the-inspector) · [Controls](#controls) · [Troubleshooting](#troubleshooting)
 
 ## Overview
 
@@ -90,7 +94,7 @@ For an isolated Xcode Preview, start the agent in the preview’s `.task` as wel
 
 Calling `start()` more than once with the same host and port is safe: the agent keeps a single connection and updates the app name if needed. `DialKitAgent` runs on the main actor; call it from your app’s main-thread startup or a `@MainActor` context. For UIKit startup, see the [UIKit example](#uikit).
 
-## Quick start
+## Code example
 
 After starting the agent, add this model and view to your app. Present `CardPreview()` in your `WindowGroup`, or use it in the `#Preview` above. Every control below reads and writes a property that the view actually uses:
 
