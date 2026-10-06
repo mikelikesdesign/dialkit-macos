@@ -46,6 +46,19 @@ public final class DialPanelState<Model: Codable & Equatable>: ObservableObject,
         DialStore.shared.unregister(panelBox)
     }
 
+    /// Make this instance the edit target for its ID when its view appears.
+    /// Use a stable ID for a logical panel that Xcode may recreate while
+    /// retaining older view instances. Call on the UI thread.
+    public func activate() {
+        DialStore.shared.register(panelBox)
+    }
+
+    /// Remove this instance when its view disappears. A newer instance with
+    /// the same ID remains registered. Call on the UI thread.
+    public func deactivate() {
+        DialStore.shared.unregister(panelBox)
+    }
+
     public func configure(
         name: String? = nil,
         initial: Model? = nil,

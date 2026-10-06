@@ -11,11 +11,26 @@ public struct DialKitSessionSnapshot: Codable, Equatable, Identifiable {
     public var panels: [DialKitPanelSnapshot]
     /// Identifies the inspector edit processed before this snapshot was captured.
     public var acknowledgedEditID: UUID?
+    /// Present only for Xcode Previews. Older peers omit this metadata.
+    public var previewSession: DialKitPreviewSession?
 
     public init(id: UUID = UUID(), appName: String, panels: [DialKitPanelSnapshot]) {
         self.id = id
         self.appName = appName
         self.panels = panels
+    }
+}
+
+/// Identifies an explicit preview activation, independently of automatic retries.
+public struct DialKitPreviewSession: Codable, Equatable {
+    public var id: UUID
+    public var appID: String
+    public var startedAt: Date
+
+    public init(id: UUID = UUID(), appID: String, startedAt: Date = Date()) {
+        self.id = id
+        self.appID = appID
+        self.startedAt = startedAt
     }
 }
 

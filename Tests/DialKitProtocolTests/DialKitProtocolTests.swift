@@ -2,6 +2,14 @@ import XCTest
 @testable import DialkitmacOSProtocol
 
 final class DialKitProtocolTests: XCTestCase {
+    func testPreviewMetadataRoundTripsAndLegacySnapshotStillDecodes() throws {
+        var snapshot = DialKitSessionSnapshot(appName: "Preview", panels: [])
+        let legacyData = try JSONEncoder().encode(snapshot)
+        XCTAssertNil(try JSONDecoder().decode(DialKitSessionSnapshot.self, from: legacyData).previewSession)
+        snapshot.previewSession = .init(appID: "test.app", startedAt: Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(try JSONDecoder().decode(DialKitSessionSnapshot.self, from: JSONEncoder().encode(snapshot)), snapshot)
+    }
+
     func testSliderNumericMetadataRoundTripsAndOldSnapshotsStillDecode() throws {
         for numericType in [DialKitSliderValueType.float, .double] {
             let control = DialKitControlSnapshot(path: "value", label: "Value",

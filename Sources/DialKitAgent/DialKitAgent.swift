@@ -12,13 +12,24 @@ public final class DialKitAgent {
     private var connection: NWConnection?
     private var receiveBuffer = Data()
     private var storeCancellable: AnyCancellable?
-    private var reconnectWorkItem: DispatchWorkItem?
+    private var reconnectTask: Task<Void, Never>?
     private var appName = "App"
     private var host = DialKitConnectionDefaults.host
     private var port = DialKitConnectionDefaults.port
     private var isRunning = false
+    private let previewAppID: String?
+    // Explicit starts identify a new activation; automatic retries retain it.
+    private var previewSession: DialKitPreviewSession?
 
-    private init() {}
+    private convenience init() {
+        self.init(previewAppID: ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+            ? Bundle.main.bundleIdentifier ?? Bundle.main.bundleURL.lastPathComponent
+            : nil)
+    }
+
+    init(previewAppID: String?) {
+        self.previewAppID = previewAppID
+    }
 
     public func start(
         appName: String? = nil,
@@ -26,15 +37,19 @@ public final class DialKitAgent {
         port: UInt16 = DialKitConnectionDefaults.port
     ) {
         let resolvedAppName = appName ?? Self.defaultAppName
+        if let previewAppID {
+            // Resuming a canvas may reuse a process superseded by a different
+            // preview. Only this explicit activation may reclaim its connection.
+            previewSession = DialKitPreviewSession(appID: previewAppID)
+        }
 
-        // Calling start() again with the same endpoint is a no-op apart from
-        // refreshing the app name. This is common in Xcode Previews, where a
+        // Calling start() again keeps a healthy connection and refreshes the
+        // app name and preview activation. This is common in Xcode Previews, where a
         // `.task` that starts the agent re-runs whenever the view is recreated.
         if isRunning, self.host == host, self.port == port {
-            if self.appName != resolvedAppName {
-                self.appName = resolvedAppName
-                sendSnapshot()
-            }
+            self.appName = resolvedAppName
+            if connection == nil { connect() }
+            else { sendSnapshot() }
             return
         }
 
@@ -59,8 +74,8 @@ public final class DialKitAgent {
 
     public func stop() {
         isRunning = false
-        reconnectWorkItem?.cancel()
-        reconnectWorkItem = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
         storeCancellable = nil
         receiveBuffer.removeAll()
         connection?.cancel()
@@ -73,6 +88,7 @@ public final class DialKitAgent {
 
     private func sendSnapshot(acknowledging editID: UUID?) {
         var snapshot = DialStore.shared.remoteSnapshot(appName: appName)
+        snapshot.previewSession = previewSession
         snapshot.acknowledgedEditID = editID
         send(.snapshot(snapshot))
     }
@@ -82,6 +98,8 @@ public final class DialKitAgent {
             return
         }
 
+        reconnectTask?.cancel()
+        reconnectTask = nil
         receiveBuffer.removeAll()
 
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -115,7 +133,9 @@ public final class DialKitAgent {
 
         switch state {
         case .ready:
-            send(.hello(DialStore.shared.remoteSnapshot(appName: appName)))
+            var snapshot = DialStore.shared.remoteSnapshot(appName: appName)
+            snapshot.previewSession = previewSession
+            send(.hello(snapshot))
         case .waiting, .failed, .cancelled:
             // A refused connection can remain waiting forever, even after the
             // inspector starts. Retire it before retrying so stale callbacks
@@ -232,7 +252,16 @@ public final class DialKitAgent {
             case .log: outgoing = message
             }
             let data = try DialKitWireCodec.encode(outgoing)
-            connection.send(content: data, completion: .contentProcessed { _ in })
+            connection.send(content: data, completion: .contentProcessed { [weak self, weak connection] error in
+                guard error != nil else { return }
+                Task { @MainActor [weak self, weak connection] in
+                    guard let self, let connection, self.connection === connection else { return }
+                    self.connection = nil
+                    connection.cancel()
+                    self.receiveBuffer.removeAll()
+                    self.scheduleReconnect()
+                }
+            })
         } catch {
             sendLog("Could not encode agent message: \(error.localizedDescription)")
         }
@@ -255,14 +284,12 @@ public final class DialKitAgent {
             return
         }
 
-        reconnectWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.connect()
-            }
+        reconnectTask?.cancel()
+        reconnectTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(1)) }
+            catch { return }
+            self?.connect()
         }
-        reconnectWorkItem = item
-        queue.asyncAfter(deadline: .now() + 1.0, execute: item)
     }
 
     private static var defaultAppName: String {

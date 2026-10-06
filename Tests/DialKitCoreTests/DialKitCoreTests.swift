@@ -19,6 +19,29 @@ final class DialKitCoreTests: XCTestCase {
         DialStore.shared.resetForTesting()
     }
 
+    func testRecreatedPanelTargetsVisibleInstanceAndOldCleanupCannotRemoveIt() {
+        let id = UUID()
+        var old: DialPanelState<DemoModel>? = DialPanelState(id: id, name: "Preview", initial: DemoModel(), controls: [
+            .toggle("enabled", keyPath: \.enabled)
+        ])
+        let current = DialPanelState(id: id, name: "Preview", initial: DemoModel(), controls: [
+            .toggle("enabled", keyPath: \.enabled)
+        ])
+        old?.activate()
+        current.activate()
+        old?.deactivate()
+        XCTAssertEqual(DialStore.shared.remoteSnapshot(appName: "Preview").panels.map(\.id), [id])
+        XCTAssertTrue(DialStore.shared.setRemoteControlValue(panelID: id, path: "enabled", value: .bool(false)))
+        XCTAssertFalse(current.values.enabled)
+        XCTAssertTrue(old?.values.enabled == true)
+        old = nil
+        XCTAssertEqual(DialStore.shared.remoteSnapshot(appName: "Preview").panels.count, 1)
+        current.deactivate()
+        XCTAssertTrue(DialStore.shared.remoteSnapshot(appName: "Preview").panels.isEmpty)
+        current.activate()
+        XCTAssertEqual(DialStore.shared.remoteSnapshot(appName: "Preview").panels.count, 1)
+    }
+
     func testIntegerConversionSaturatesAtRepresentableEndpoints() {
         XCTAssertEqual(Int(dialDoubleValue: Double(Int.max)), Int.max)
         XCTAssertEqual(Int(dialDoubleValue: Double(Int.min)), Int.min)

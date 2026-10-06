@@ -92,7 +92,28 @@ For an isolated Xcode Preview, start the agent in the preview’s `.task` as wel
 }
 ```
 
-Calling `start()` more than once with the same host and port is safe: the agent keeps a single connection and updates the app name if needed. `DialKitAgent` runs on the main actor; call it from your app’s main-thread startup or a `@MainActor` context. For UIKit startup, see the [UIKit example](#uikit).
+Calling `start()` more than once with the same host and port is safe: the agent keeps a healthy connection and refreshes its snapshot. `DialKitAgent` runs on the main actor; call it from your app’s main-thread startup or a `@MainActor` context. For UIKit startup, see the [UIKit example](#uikit).
+
+In Xcode Previews, each explicit `start()` identifies a new activation. A newly started or resumed preview of the same app can replace an older connection after a rebuild, pause, or device change; automatic retries from the older activation cannot take it back. Keep `start()` in the preview's `.task` so resuming the canvas can reactivate it. Ordinary responsive app connections stay selected. Both the agent and inspector must include this behavior; rebuild the inspector after updating the local package.
+
+The inspector checks for app responses every two seconds. If a connected app stops responding for eight seconds, it releases the stalled socket. The agent retries automatically when execution resumes; no manual inspector refresh is needed. Short pauses keep the existing connection. While the app is paused it cannot process edits; restarting its process also resets values to the app's defaults.
+
+Xcode can also retain old view instances within one preview process. Give each logical panel a fixed `id` (a UUID literal, not a freshly generated UUID), and tie its registration to the owning view:
+
+```swift
+@StateObject private var dial = DialPanelState(
+    id: UUID(uuidString: "A580459D-924C-4296-963A-3F032C0AB38A")!,
+    name: "Card",
+    initial: CardModel(),
+    controls: [.slider("cornerRadius", keyPath: \.cornerRadius, range: 0...48)]
+)
+
+// On the view that owns this panel:
+// .onAppear { dial.activate() }
+// .onDisappear { dial.deactivate() }
+```
+
+Use distinct IDs for panels that should be edited independently. `activate()` makes the visible instance the target for its ID; cleanup from an older instance cannot unregister its replacement. This preserves the edit target, not unsaved values across process rebuilds. If your app's `WindowGroup` creates the same root view as `#Preview`, avoid creating that hidden app view when `ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"`; the canvas creates its own root.
 
 ## Code example
 
@@ -262,7 +283,7 @@ The [demo app](Examples/DialKitDemo/DialKitDemo/ContentView.swift) uses a local 
 3. In Terminal, run `swift run dialkit-macos` from the repository root.
 4. Edit the **Card** panel. Try **Title**, **Layout → Corner Radius**, **Appearance → Fill**, and **Motion → Bounce**.
 
-The demo also has an agent-enabled `#Preview` for tuning in Xcode’s canvas. The inspector keeps its current app connection stable if both are running. Stop the connected app to switch to the other.
+The demo also has an agent-enabled `#Preview` for tuning in Xcode’s canvas. The inspector keeps its current app connection stable if both are running. Stop the connected app to switch to the preview; newer previews of the same app take over automatically.
 
 ## Controls
 
